@@ -1,3 +1,34 @@
+**🚨 CRITICAL INSTRUCTION - READ FIRST - HIGHEST PRIORITY 🚨**
+
+**PATTERN DETECTION RULES (NO EXCEPTIONS):**
+
+If the user's query contains **ANY** of these patterns:
+- Dot notation: `vendTrans.Invoice`, `custTable.AccountNum`, `salesLine.Qty`, `*.SomethingElse`
+- Table suffixes: `vendTrans`, `custTrans`, `*Trans`, `*Table`, `*Line`, `*Header`, `*Journal`
+- Field names: `Invoice`, `Voucher`, `AccountNum`, `ItemId`, `Qty`, `RecId`
+- D365FO terms: `X++`, `D365FO`, `AxClass`, `AxTable`, `validateWrite`
+
+**THEN YOU MUST:**
+- ✅ USE MCP tools: `search()`, `find_references()`, `get_class_info()`, `get_table_info()`
+- ❌ **NEVER EVER** use: `code_search()`, `file_search()`, `grep_search()`, `create_file()` for D365FO
+
+**EXPLICIT EXAMPLES:**
+```
+Query: "write function... use where vendTrans.Invoice is used"
+Detection: ✅ vendTrans.Invoice = DOT NOTATION = D365FO!
+Action: search("Invoice", type="field") + find_references("Invoice", "field")
+FORBIDDEN: ❌ code_search("vendTrans.Invoice") - WILL HANG!
+
+Query: "show me CustTable fields"
+Detection: ✅ CustTable = TABLE SUFFIX *Table = D365FO!
+Action: get_table_info("CustTable")
+FORBIDDEN: ❌ code_search("CustTable") - WILL HANG!
+```
+
+**NO EXCEPTIONS. NO EXCUSES. THIS IS ABSOLUTE.**
+
+═══════════════════════════════════════════════════════════════════════════════
+
 # D365FO X++ Development — GitHub Copilot Instructions for Visual Studio 2022
 
 > **🔴 ABSOLUTE REQUIREMENT: You MUST use MCP tools for ALL D365FO/X++ operations.**
@@ -9,9 +40,65 @@
 
 ---
 
+# ⛔ IMMEDIATE ACTION REQUIRED — CHECK BEFORE EVERY RESPONSE ⛔
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  🚨 CRITICAL PRE-FLIGHT CHECK — EXECUTE BEFORE ANY TOOL CALL 🚨              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  QUESTION: Does the user's query contain ANY of these patterns?             │
+│                                                                              │
+│  ✓ Dot notation with PascalCase?     (vendTrans.Invoice, custTable.AccountNum) │
+│  ✓ Table name suffixes?              (*Trans, *Table, *Line, *Header, *Journal) │
+│  ✓ D365FO field names?                (Invoice, Voucher, AccountNum, ItemId, Qty) │
+│  ✓ D365FO keywords?                   (X++, D365FO, AxClass, AxTable, validateWrite) │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  IF YES TO ANY → THIS IS D365FO!                                    │   │
+│  │  ❌ DO NOT use: code_search, file_search, grep_search              │   │
+│  │  ✅ USE ONLY: MCP tools (search, find_references, get_*_info)      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  IF NO → Safe to use built-in tools                                         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**EXAMPLES REQUIRING MCP TOOLS:**
+```
+❌ "write function... use where vendTrans.Invoice is used"  → USES: vendTrans.Invoice (D365FO!)
+❌ "show me CustTable fields"                                → USES: CustTable (D365FO!)
+❌ "find where validateWrite is called"                      → USES: validateWrite (D365FO!)
+❌ "create class MyHelper extends SalesTable"                → USES: SalesTable (D365FO!)
+
+✅ ALL ABOVE → USE MCP TOOLS ONLY
+```
+
+## QUICK DECISION FLOWCHART
+
+```
+User Query
+    │
+    ├─ Contains: something.SomethingElse (PascalCase)?         → MCP TOOLS
+    ├─ Contains: *Trans, *Table, *Line, *Header?               → MCP TOOLS  
+    ├─ Contains: Invoice, Voucher, AccountNum, ItemId, Qty?    → MCP TOOLS
+    ├─ Contains: X++, D365FO, AxClass, AxTable, validateWrite? → MCP TOOLS
+    ├─ Mentions: "where X is used" with above patterns?        → MCP TOOLS
+    │
+    └─ None of above?                                           → Built-in tools OK
+```
+
+**IF IN DOUBT → USE MCP TOOLS! They are fast (<100ms) and never wrong.**
+
+---
+
 # 🚨 CRITICAL POLICY — READ FIRST 🚨
 
 ## Principle: MCP-ONLY for D365FO
+
+> **🚨 If you see dot notation like `vendTrans.Invoice`, `custTable.AccountNum`, `salesLine.Qty` — this is D365FO!**
+> **YOU MUST use MCP tools, NOT code_search/file_search/grep_search!**
 
 **For ANY D365FO/X++ query, you MUST:**
 1. ✅ **ALWAYS** use MCP tools FIRST — they query the ACTUAL D365FO environment in real-time
@@ -26,17 +113,62 @@
 - MCP tools understand X++ semantics (inheritance, EDT, relations, forms, queries)
 - D365FO XML files require TABS for indentation — `create_file` uses spaces
 
+**🚨 DETECTION EXAMPLES — These patterns REQUIRE MCP tools:**
+```
+❌ WRONG: code_search("vendTrans.Invoice") 
+✅ RIGHT: search("Invoice", type="field") + find_references("Invoice", "field")
+
+❌ WRONG: grep_search("CustTable") 
+✅ RIGHT: search("CustTable", type="table") + get_table_info("CustTable")
+
+❌ WRONG: file_search("**/SalesLine*")
+✅ RIGHT: search("SalesLine", type="table") + search("SalesLine", type="class")
+```
+
 ---
 
 # 🎯 DETECTION: When Am I in D365FO Context?
 
+> **🚨 CRITICAL: If you see dot notation like `vendTrans.Invoice`, `custTable.AccountNum`, `salesLine.Qty` — this is D365FO!**
+> **YOU MUST use MCP tools, NOT code_search/file_search/grep_search!**
+
 **Use MCP tools when you see ANY of these triggers:**
 
-### Object Names
-- Class patterns: `*Table`, `*Service`, `*Helper`, `*Contract`, `*Controller`, `*Builder`, `*Manager`, `*Engine`
-- Table names: `CustTable`, `VendTable`, `SalesTable`, `PurchTable`, `InventTable`, `LedgerJournalTable`
-- Enum names: `CustVendorBlocked`, `SalesStatus`, `PurchStatus`, `*Status`
-- Form names: patterns ending in `Form`, `Dialog`, `Page`
+### 🔴 PRIMARY DETECTION PATTERNS (Most Common)
+
+#### Dot Notation with PascalCase (D365FO Field Access)
+**Pattern:** `variable.PascalCaseField` 
+**Examples that MUST trigger MCP tools:**
+- `vendTrans.Invoice` → VendTrans table, Invoice field
+- `custTable.AccountNum` → CustTable table, AccountNum field  
+- `salesLine.Qty` → SalesLine table, Qty field
+- `inventTrans.Voucher` → InventTrans table, Voucher field
+- ANY `something.SomethingElse` pattern with PascalCase
+
+**⚠️ If user query contains ANY dot notation pattern → USE MCP TOOLS, NOT built-in search!**
+
+#### Table Name Suffixes
+- **Transaction tables**: `*Trans` (VendTrans, CustTrans, InventTrans, LedgerTrans, etc.)
+- **Master tables**: `*Table` (CustTable, VendTable, SalesTable, PurchTable, etc.)
+- **Line tables**: `*Line` (SalesLine, PurchLine, InventJournalLine, etc.)
+- **Header tables**: `*Header` (SalesHeader, PurchHeader, etc.)
+- **Journal tables**: `*Journal` (LedgerJournal, InventJournal, etc.)
+- **Parameter tables**: `*Parameters`, `*Parm*`
+
+### Additional Naming Patterns
+
+- **Class suffixes**: `*Service`, `*Helper`, `*Contract`, `*Controller`, `*Builder`, `*Manager`, `*Engine`
+- **Form suffixes**: `*Form`, `*Dialog`, `*Page`, `*Lookup`
+- **Enum & Status**: `*Status`, `*Type`, `*Mode`, `*Blocked`
+
+### Common D365FO Field Names
+- **Document fields**: `Invoice`, `Voucher`, `DocumentNum`, `TransId`
+- **Account fields**: `AccountNum`, `CustAccount`, `VendAccount`, `LedgerAccount`
+- **Item fields**: `ItemId`, `ItemName`, `ItemGroupId`
+- **Quantity & Amount**: `Qty`, `Amount`, `Price`, `LineAmount`, `TotalAmount`, `CurrencyCode`
+- **Dates**: `TransDate`, `PostingDate`, `DueDate`, `DeliveryDate`, `AccountingDate`
+- **System fields**: `RecId`, `DataAreaId`, `Partition`, `RecVersion`, `ModifiedBy`, `CreatedDateTime`
+- **Reference fields**: `RefRecId`, `RefTableId`, `ParentRecId`
 
 ### Keywords & Technologies
 - `X++`, `D365FO`, `D365`, `Dynamics 365`, `Finance & Operations`, `AX`, `Axapta`
@@ -303,6 +435,9 @@
 **Triggers:** "find", "search", "show me", "where is", "locate", "najdi", "hledej"
 
 ```
+🛑 STOP: Check user query for D365FO patterns (dot notation, table suffixes, field names)
+   → If D365FO detected → SKIP code_search/file_search → USE MCP tools below!
+
 1. Identify what they're looking for:
    - Class → search(query=X, type="class")
    - Table → search(query=X, type="table")
@@ -328,6 +463,9 @@
 **Triggers:** "create", "generate", "make", "add new", "build", "vytvoř", "vygeneruj"
 
 ```
+🛑 STOP: Is this D365FO object (class/table/form/enum)?
+   → YES → USE create_d365fo_file or generate_d365fo_xml
+   → NO → Safe to use create_file
 1. Extract info:
    - objectType: class/table/form/enum/query/view/data-entity
    - objectName: from user request
@@ -354,6 +492,9 @@
 **Triggers:** "what methods", "show fields", "class structure", "table definition", "inheritance", "ukaž"
 
 ```
+🛑 STOP: Check for D365FO object names (CustTable, SalesLine, validateWrite, etc.)
+   → If D365FO → USE MCP tools below, NOT code_search!
+
 1. Identify object type and use corresponding tool:
    - Class → get_class_info(className=X)
    - Table → get_table_info(tableName=X)
@@ -377,7 +518,10 @@
 **Triggers:** "generate code", "create method", "write class", "implement", "napiš"
 
 ```
-🔴 MANDATORY STEPS (in this order):
+� STOP: Check if user mentions D365FO objects/patterns
+   → If YES → MANDATORY to use MCP tools for context gathering!
+
+�🔴 MANDATORY STEPS (in this order):
 
 Step 1: Learn patterns → analyze_code_patterns(scenario="<what user wants>")
 Step 2: Find related classes → search(query="<keywords>", type="class")
@@ -453,6 +597,31 @@ Step 5: Generate code → generate_code(pattern="<type>", name="<name>")
 ❌ NEVER use sequential search() calls (3x slower)
 ```
 
+## Scenario 9: Create Function and Apply to Field Usage
+
+**Triggers:** "write function... use where [field] is used", "create helper... apply where [table.field]"
+
+**Example:** "write a function that takes 10 numeric chars from right. Use this function where vendTrans.Invoice or custTrans.Invoice is used"
+
+```
+🔴 DETECTION: This is D365FO if you see:
+- Dot notation (vendTrans.Invoice, custTrans.Invoice, salesLine.Qty)
+- Table suffixes (*Trans, *Table, *Line)
+- PascalCase field names (Invoice, Voucher, AccountNum)
+
+MANDATORY STEPS:
+1. Detect D365FO context → DO NOT use code_search/file_search!
+2. search("Invoice", type="field") → find field definitions
+3. find_references(symbolName="Invoice", symbolType="field") → where-used analysis
+4. analyze_code_patterns("invoice") → learn usage patterns (optional)
+5. generate_code(pattern="class", name="InvoiceHelper") → create helper function
+6. Show top 10-20 usage locations where function should be applied
+
+❌ NEVER use code_search for "vendTrans.Invoice" - will hang!
+✅ ALWAYS use MCP tools for D365FO field references
+```❌ NEVER use sequential search() calls (3x slower)
+```
+
 ---
 
 # 🚫 FORBIDDEN ACTIONS — For D365FO/X++
@@ -460,6 +629,7 @@ Step 5: Generate code → generate_code(pattern="<type>", name="<name>")
 | ❌ Forbidden | Why | ✅ Use Instead |
 |--------------|-----|----------------|
 | `code_search("CustTable")` | Hangs 5+ min on 500k+ symbols | `search("CustTable", type="class")` |
+| `code_search("vendTrans.Invoice")` | Hangs on field searches, wrong tool | `search("Invoice", type="field")` + `find_references` |
 | `file_search("**/MyClass.xml")` | Doesn't understand D365FO structure | `search("MyClass", type="class")` |
 | `grep_search("validateWrite")` | Too slow, no semantic understanding | `search("validateWrite", type="method")` |
 | `create_file("MyClass.xml", ...)` | Wrong location, wrong XML (spaces vs TABS) | `create_d365fo_file(objectType="class", ...)` |
@@ -636,9 +806,51 @@ Copilot Workflow:
 2. Present results grouped by reference type (calls, extends, instantiations)
 ```
 
+## Example 5: Pattern-Based Detection (Czech/English)
+
+```
+User: "write a function that takes 10 numeric characters from the right FA2026#1234567890 -> 1234567890.
+         Use this function where vendTrans.Invoice or custTrans.Invoice is used"
+
+DETECTION TRIGGERS:
+✅ "vendTrans.Invoice" → Dot notation with PascalCase field (Invoice)
+✅ "custTrans.Invoice" → Dot notation with PascalCase field (Invoice)
+✅ "*Trans" → Table suffix pattern
+✅ "Invoice" → Common D365FO field name
+
+Copilot Workflow:
+1. analyze_code_patterns("invoice") → learn Invoice field usage patterns
+2. search("Invoice", type="field") → find Invoice field in all tables
+3. find_references(symbolName="Invoice", symbolType="field") → where-used analysis
+4. generate_code(pattern="class", name="InvoiceHelper") → create helper with extractDigits()
+5. Show top implementation locations with code examples
+```
+
 ---
 
 # 🎯 SUMMARY: Golden Rules
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║  🏆 THE ONE RULE TO RULE THEM ALL 🏆                                     ║
+║                                                                           ║
+║  IF query contains:                                                       ║
+║    • something.SomethingElse (dot notation + PascalCase)                 ║
+║    • *Trans, *Table, *Line, *Header, *Journal                            ║
+║    • Invoice, Voucher, AccountNum, ItemId, Qty, RecId                    ║
+║    • X++, D365FO, AxClass, AxTable, validateWrite                        ║
+║                                                                           ║
+║  THEN:                                                                    ║
+║    ✅ USE MCP tools (search, find_references, get_*_info)                ║
+║    ❌ DO NOT use code_search, file_search, grep_search                   ║
+║                                                                           ║
+║  NO EXCEPTIONS. NO EXCUSES. 100% COMPLIANCE REQUIRED.                    ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+```
+
+## Detailed Rules
 
 1. **ALWAYS use MCP tools for D365FO** — no exceptions
 2. **NEVER use code_search / file_search / grep_search** — will hang or give wrong results
@@ -673,3 +885,27 @@ FORBIDDEN:     code_search, file_search, grep_search, create_file (for D365FO ob
 **Built-in tools = Slow (5+ min hangs), Outdated, Errors**
 
 **When user asks about D365FO → STOP → USE MCP TOOLS!** 🚀
+
+---
+
+# ⚠️ FINAL REMINDER — READ BEFORE EVERY RESPONSE
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│  Before using ANY tool, ask yourself:                          │
+│                                                                │
+│  1. Does the query mention D365FO patterns?                    │
+│     (dot notation, *Trans, *Table, Invoice, validateWrite)     │
+│                                                                │
+│  2. If YES → Use MCP tools ONLY                                │
+│     If NO  → Built-in tools are OK                             │
+│                                                                │
+│  3. When in doubt? → USE MCP TOOLS (they're fast & safe)       │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Remember:** `vendTrans.Invoice` = D365FO = MCP tools = search + find_references
+
+**END OF INSTRUCTIONS**

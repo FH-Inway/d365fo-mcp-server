@@ -18,8 +18,6 @@
 
 </div>
 
----
-
 ## 📋 Overview
 
 The **D365 F&O MCP Server** bridges the gap between AI-powered development tools and Microsoft Dynamics 365 Finance & Operations. It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to provide real-time X++ code intelligence directly within your IDE through GitHub Copilot.
@@ -51,8 +49,6 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
 ## ⚠️ Important for GitHub Copilot Users
 
 **When working with this repository, GitHub Copilot MUST use the specialized X++ MCP tools, NOT the built-in search tools.**
@@ -66,9 +62,21 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 ### ✅ ALWAYS USE (for X++ objects):
 - ✅ `search` (MCP tool) - 100x faster, indexed SQL, X++-aware
 
-**See [.github/copilot-instructions.md](.github/copilot-instructions.md) for complete guidelines.**
+### 🎯 How to Force MCP Tool Usage in VS 2022
 
----
+GitHub Copilot in Visual Studio 2022 doesn't automatically apply `.github/copilot-instructions.md`. **You need to add an explicit prefix to your queries:**
+
+**Quick Method - Add prefix to your query:**
+```
+[MCP ONLY] write a function that extracts 10 digits from right where vendTrans.Invoice is used
+```
+
+**Fast Method - Use VS Code snippet:**
+- Type `d365` and press Tab → auto-completes full template
+- Type `d365q` and press Tab → adds `[MCP ONLY]` prefix
+
+**See [HOW_TO_QUERY.md](HOW_TO_QUERY.md) for complete guide with examples.**
+**See [.github/copilot-instructions.md](.github/copilot-instructions.md) for complete technical guidelines.**
 
 ## 👥 Who Is This For?
 
@@ -100,8 +108,6 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 </td>
 </tr>
 </table>
-
----
 
 ## ✨ Features
 
@@ -199,8 +205,6 @@ Remember this for all queries in this session.
 - 💾 **Redis Caching** — Optional caching layer for improved performance
 - 🌐 **Cloud Native** — Deploy to Azure App Service with automated CI/CD
 
----
-
 ## 📊 Comparison: Before vs After
 
 | Scenario | Without MCP Server | With MCP Server |
@@ -221,8 +225,6 @@ Remember this for all queries in this session.
 │  Startup Time         <5 sec     (database download)          │
 └────────────────────────────────────────────────────────────────┘
 ```
-
----
 
 ## 🚀 Quick Start
 
@@ -268,8 +270,6 @@ npm run dev
 ```
 
 The server will be available at `http://localhost:8080/mcp`
-
----
 
 ## 🖥️ Visual Studio 2022 Integration
 
@@ -353,8 +353,6 @@ GitHub Copilot will automatically invoke the appropriate MCP tools and provide a
 | **Code Review** | Analyze existing code with full metadata context |
 | **Learning** | Explore unfamiliar modules with natural language queries |
 
----
-
 ## ⚙️ Configuration
 
 Create a `.env` file in the project root:
@@ -386,8 +384,6 @@ REDIS_URL=redis://localhost:6379
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
 ```
-
----
 
 ## 🏗️ Architecture
 
@@ -432,8 +428,6 @@ RATE_LIMIT_MAX_REQUESTS=100
 
 For detailed architecture diagrams with Mermaid visualizations, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
----
-
 ## 📚 Documentation
 
 | Document | Description |
@@ -444,8 +438,6 @@ For detailed architecture diagrams with Mermaid visualizations, see [ARCHITECTUR
 | [**PIPELINES.md**](docs/PIPELINES.md) | Azure DevOps pipeline automation |
 | [**CUSTOM_EXTENSIONS.md**](docs/CUSTOM_EXTENSIONS.md) | ISV and custom extension development |
 | [**TESTING.md**](docs/TESTING.md) | Testing guide and best practices |
-
----
 
 ## 🧪 Testing
 
@@ -460,8 +452,6 @@ npm test -- --run
 npm test -- --coverage
 ```
 
----
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please read our contributing guidelines and submit pull requests to the `develop` branch.
@@ -472,13 +462,9 @@ Contributions are welcome! Please read our contributing guidelines and submit pu
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
----
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 <div align="center">
 

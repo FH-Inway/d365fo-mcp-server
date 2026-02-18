@@ -488,15 +488,15 @@ class ProjectFileManager {
       });
     }
 
-    // Normalize path separators to backslash for Windows
-    const normalizedPath = absoluteXmlPath.replace(/\//g, '\\');
+    // D365FO .rnrproj standard: use RELATIVE path (e.g. AxClass\ObjectName.xml)
+    const relativePath = `${folderName}\\${objectName}.xml`;
 
-    // Check if file already in project (check both normalized and original path)
+    // Check if file already in project
     const fileExists = contentGroup.Content.some(
       (content: any) =>
         content.$ && (
-          content.$.Include === normalizedPath ||
-          content.$.Include === absoluteXmlPath
+          content.$.Include === relativePath ||
+          content.$.Include === absoluteXmlPath.replace(/\//g, '\\')
         )
     );
 
@@ -504,13 +504,11 @@ class ProjectFileManager {
       throw new Error(`File ${objectName} is already in the project`);
     }
 
-    // Add file reference with ABSOLUTE path (D365FO standard)
-    // The Include attribute must contain the full path to the XML file
+    // Add file reference with RELATIVE path (D365FO .rnrproj standard)
     contentGroup.Content.push({
-      $: { Include: normalizedPath },
+      $: { Include: relativePath },
       SubType: 'Content',
       Name: objectName,
-      Link: `${folderName}\\${objectName}.xml`,
     });
 
     console.error(

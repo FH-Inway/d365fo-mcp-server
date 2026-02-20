@@ -92,6 +92,9 @@ async function extractMetadata() {
     console.log(`📋 Mode: Extract all models (standard + custom)`);
   }
   console.log('');
+  console.log(`ℹ️  Note: AxLabelFile labels (.label.txt) are NOT extracted here.`);
+  console.log(`   Labels are indexed directly from PACKAGES_PATH during 'npm run build-database'.`);
+  console.log('');
 
   const parser = new XppMetadataParser();
   const stats: ExtractionStats = {

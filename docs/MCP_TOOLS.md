@@ -1,7 +1,7 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-20 tools to look up the answer or generate code. You do not need to name the tools yourself —
+23 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
@@ -52,6 +52,14 @@ just ask in plain English.
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **generate_code** | Generate X++ boilerplate (class, batch job, CoC, etc.) | "Generate a batch job class for order processing" |
+
+### Label Management (3 tools)
+
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **search_labels** | Full-text search across all AxLabelFile labels | "Find a label for 'customer account'" |
+| **get_label_info** | All translations for a label ID, or list label files | "Show all translations of ACFeature in AslCore" |
+| **create_label** | Add a new label to all language files in a model | "Create label MyNewField in AslCore" |
 
 ---
 
@@ -265,6 +273,83 @@ Edits an existing D365FO XML file safely:
 ```
 Add a method calculateDiscount() to MyCustomHelper
 Add a field CreditStatus to MyCustomTable
+```
+
+---
+
+### search_labels
+
+Performs full-text search across all indexed AxLabelFile labels. Searches label IDs, text
+content, and developer comments simultaneously. Returns labels in ranked order with ready-to-use
+`@LabelFileId:LabelId` reference syntax.
+
+> **Always call this before `create_label`** — reusing an existing label avoids duplication
+> and saves translation effort.
+
+**Parameters:**
+- `query` — text to search for (required)
+- `language` — filter by locale, e.g. `en-US` (default: `en-US`)
+- `model` — restrict to one model, e.g. `AslCore`
+- `labelFileId` — restrict to one label file ID
+- `limit` — max results (default: 30)
+
+**Examples:**
+```
+Find a label for the text "customer account"
+Search for labels about "batch" in the AslCore model
+Find labels matching "vendor" in English
+```
+
+---
+
+### get_label_info
+
+Has two modes depending on whether you pass a label ID:
+
+**Mode A — list label files** (no `labelId`): Shows all AxLabelFile IDs available in a
+model, the languages they contain, and how many labels each file has.
+
+**Mode B — show translations** (with `labelId`): Shows all language translations for a
+specific label, including the developer comment, and generates ready-to-use X++ and XML
+code snippets.
+
+**Examples:**
+```
+What label files does the AslCore model have?
+Show me all translations of label ACFeature in AslCore
+Show me the X++ snippet for label BatchGroup
+```
+
+---
+
+### create_label
+
+Adds a new label to every language `.label.txt` file in a model. Inserts the entry
+alphabetically (as required by the D365FO label file format), creates the AxLabelFile XML
+descriptors if the model doesn't have any yet, and updates the MCP index so the new label
+is immediately searchable.
+
+> **Always call `search_labels` first** to verify the label doesn't already exist.
+
+**Parameters:**
+- `labelId` — new label ID, e.g. `MyNewField` (required)
+- `labelFileId` — target label file, e.g. `AslCore` (required)
+- `model` — model name, e.g. `AslCore` (required)
+- `translations` — array of `{ language, text }` objects (required); provide all supported
+  languages
+- `defaultComment` — developer comment added to each translation
+- `packagePath` — override K: drive path (default: env `PACKAGES_PATH`)
+- `createLabelFileIfMissing` — create AxLabelFile structure from scratch if needed
+- `updateIndex` — immediately update the MCP index (default: `true`)
+
+**Label reference syntax after creation:**
+- In X++ code: `literalStr("@AslCore:MyNewField")`
+- In metadata XML: `<Label>@AslCore:MyNewField</Label>`
+
+**Examples:**
+```
+Create label MyNewField in the AslCore model with translations for en-US, cs, de, and sk
+Add a new label CustomerAccountNumber with English text "Customer account number"
 ```
 
 ---

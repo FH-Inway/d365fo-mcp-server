@@ -830,6 +830,153 @@ Examples:
             required: ['enumName'],
           },
         },
+        {
+          name: 'search_labels',
+          description: `🏷️ Full-text search across indexed D365FO AxLabelFile labels. Search by text, label ID or comment to find existing labels before creating new ones.
+
+Returns matching label IDs, their translated text, developer comment and the X++ reference syntax (@LabelFileId:LabelId).
+
+Use WHEN:
+- Looking for an existing label to reuse (always do this BEFORE create_label!)
+- Finding the correct reference syntax for a label
+- Discovering what labels exist in a custom model
+- Searching for labels by keyword (e.g. "customer", "batch", "error")
+
+Examples:
+- search_labels("batch group") → finds ACFeature, BatchGroup, etc.
+- search_labels("ACFeature", model="AslCore") → labels in custom AslCore model
+- search_labels("feature", language="cs") → Czech translations`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'Search text — searches label ID, text and developer comment',
+              },
+              language: {
+                type: 'string',
+                description: 'Language/locale to search in (default: en-US). Examples: cs, de, sk',
+              },
+              model: {
+                type: 'string',
+                description: 'Restrict to a specific model (e.g. AslCore, ApplicationPlatform)',
+              },
+              labelFileId: {
+                type: 'string',
+                description: 'Restrict to a specific label file ID (e.g. AslCore, SYS)',
+              },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of results (default 30)',
+              },
+            },
+            required: ['query'],
+          },
+        },
+        {
+          name: 'get_label_info',
+          description: `🏷️ Get all language translations for a D365FO label ID, or list available AxLabelFile IDs in a model.
+
+Returns:
+- All translations (en-US, cs, de, sk, and other indexed languages)
+- Developer comment
+- X++ reference syntax: @LabelFileId:LabelId
+- Ready-to-use code snippets for X++ and metadata XML
+
+Use WHEN:
+- Verifying that a label has translations in all required languages
+- Getting the correct @LabelFileId:LabelId reference to use in code
+- Listing which label files exist in a custom model (omit labelId)
+
+Examples:
+- get_label_info("ACFeature", model="AslCore") → all translations
+- get_label_info(model="AslCore") → list label files in AslCore
+- get_label_info("BatchGroup") → all languages for BatchGroup`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              labelId: {
+                type: 'string',
+                description: 'Exact label ID (e.g. ACFeature). Omit to list available label files.',
+              },
+              labelFileId: {
+                type: 'string',
+                description: 'Label file ID (e.g. AslCore, SYS)',
+              },
+              model: {
+                type: 'string',
+                description: 'Model to filter by (e.g. AslCore)',
+              },
+            },
+            required: [],
+          },
+        },
+        {
+          name: 'create_label',
+          description: `🏷️ Add a new label to an existing AxLabelFile in a custom D365FO model.
+
+Writes the label into EVERY language .label.txt file that exists in the model (inserts alphabetically), creates XML descriptors if missing, and updates the MCP label index.
+
+⚠️ ALWAYS call search_labels first to check if a suitable label already exists!
+
+Process:
+1. Reads each existing .label.txt file for the model
+2. Checks for duplicate label ID
+3. Inserts the new label in alphabetical position
+4. Writes the updated file back to disk
+5. Updates the SQLite label index
+
+Examples:
+- create_label("MyNewField", "AslCore", "AslCore", [{language:"en-US", text:"My new field"}, {language:"cs", text:"Moje nové pole"}])
+- create_label with createLabelFileIfMissing=true → creates AxLabelFile structure from scratch`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              labelId: {
+                type: 'string',
+                description: 'Unique label identifier (alphanumeric), e.g. MyNewField',
+              },
+              labelFileId: {
+                type: 'string',
+                description: 'Label file ID (e.g. AslCore)',
+              },
+              model: {
+                type: 'string',
+                description: 'Model name that owns the label file (e.g. AslCore)',
+              },
+              translations: {
+                type: 'array',
+                description: 'Translations for each language. Provide at least en-US.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    language: { type: 'string', description: 'Locale code, e.g. en-US, cs, de, sk' },
+                    text: { type: 'string', description: 'Label text' },
+                    comment: { type: 'string', description: 'Developer comment (optional)' },
+                  },
+                  required: ['language', 'text'],
+                },
+              },
+              defaultComment: {
+                type: 'string',
+                description: 'Developer comment for languages without explicit comment',
+              },
+              packagePath: {
+                type: 'string',
+                description: 'PackagesLocalDirectory path (default: K:\\AosService\\PackagesLocalDirectory)',
+              },
+              createLabelFileIfMissing: {
+                type: 'boolean',
+                description: 'Create AxLabelFile structure if missing (default: false)',
+              },
+              updateIndex: {
+                type: 'boolean',
+                description: 'Update MCP label index after writing (default: true)',
+              },
+            },
+            required: ['labelId', 'labelFileId', 'model', 'translations'],
+          },
+        },
       ],
     };
   });

@@ -21,6 +21,9 @@ import { getFormInfoTool } from './formInfo.js';
 import { getQueryInfoTool } from './queryInfo.js';
 import { getViewInfoTool } from './viewInfo.js';
 import { getEnumInfoTool } from './enumInfo.js';
+import { searchLabelsTool } from './searchLabels.js';
+import { getLabelInfoTool } from './getLabelInfo.js';
+import { createLabelTool } from './createLabel.js';
 
 /**
  * Centralized tool handler that dispatches to individual tool implementations
@@ -70,6 +73,12 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return getViewInfoTool(request, context);
       case 'get_enum_info':
         return getEnumInfoTool(request, context);
+      case 'search_labels':
+        return searchLabelsTool(request, context);
+      case 'get_label_info':
+        return getLabelInfoTool(request, context);
+      case 'create_label':
+        return createLabelTool(request, context);
       default:
         return {
           content: [

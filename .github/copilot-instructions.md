@@ -54,6 +54,12 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
    - Valid: `class`, `runnable`, `form-handler`, `data-entity`, `batch-job`, `table-extension`
    - Invalid: `coc-extension`, `event-handler`, `service-class` (these do not exist)
 
+9. **ALWAYS search for labels before creating new ones**
+   - Call `search_labels(text)` first — reusing existing labels avoids duplication and translation costs
+   - When a suitable label exists, use its reference `@LabelFileId:LabelId` directly
+   - Only call `create_label()` when no suitable label is found
+   - **NEVER edit .label.txt files directly** — use `create_label()` which inserts alphabetically and updates the index
+
 ## Available MCP Tools
 
 ### 🔍 Search and Discovery (7 tools)
@@ -67,6 +73,14 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 | `get_table_info(tableName)` | `get_file` + `get_symbols_by_name` | Returns full table schema: all fields with EDT/data types, indexes (including primary key), foreign key relations, and methods | "Show me fields and relations on CustTable" |
 | `get_enum_info(enumName)` | `get_symbols_by_name` | Returns all enum values with their integer values and labels | "What values does SalesStatus have?" |
 | `code_completion(symbolName)` | None (new capability) | Lists available methods and fields on a class or table, with IntelliSense-like filtering | "What methods start with 'calc' on SalesTable?" |
+
+### 🏷️ Label Management (3 tools)
+
+| Tool | Description | Example Usage |
+|------|-------------|---------------|
+| `search_labels(query, language?, model?, labelFileId?)` | Full-text search across all indexed AxLabelFile labels. Searches by ID, text and comment. Returns `@LabelFileId:LabelId` reference syntax. **Call this FIRST before create_label!** | `search_labels("customer name", model="AslCore")` |
+| `get_label_info(labelId?, labelFileId?, model?)` | Get all language translations for a label ID, or list available AxLabelFile IDs in a model. Shows ready-to-use X++ and XML snippets. | `get_label_info("ACFeature", model="AslCore")` |
+| `create_label(labelId, labelFileId, model, translations[])` | Add a new label to all language .label.txt files in a custom model. Inserts alphabetically. Optionally creates AxLabelFile structure from scratch. Updates the MCP index. | `create_label("MyField", "AslCore", "AslCore", [{language:"en-US", text:"My field"}, {language:"cs", text:"Moje pole"}])` |
 
 ### 📊 Advanced Object Information (5 tools)
 
@@ -88,7 +102,7 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 | `get_api_usage_patterns(apiName)` | None (new capability) | Shows how a specific API/class is typically initialized and used in your codebase, including common method call sequences | "How do I correctly use LedgerJournalEngine?" |
 | `generate_code(pattern, name, ...)` | None | Generates X++ boilerplate for common patterns: `class`, `runnable`, `form-handler`, `data-entity`, `batch-job`, `table-extension` | "Generate a batch job for order processing" |
 
-### 📝 File Operations (3 tools)
+### 📝 File & Metadata Operations (3 tools)
 
 | Tool | Replaces Built-in | Description | When to Use |
 |------|-------------------|-------------|-------------|
@@ -187,6 +201,44 @@ Step 4: Create extension with exact signature from step 2
 | "Find only my custom code" | `search_extensions("MyPrefix")` |
 | "What datasources does form X have?" | `get_form_info("X")` |
 | "How is API X typically used?" | `get_api_usage_patterns("X")` |
+| "Find label for text X" | `search_labels("X")` |
+| "Get all translations for label X" | `get_label_info("X")` |
+| "What label files exist in model X?" | `get_label_info(model="X")` |
+
+### Working with Labels (AxLabelFile)
+
+**Workflow for using an existing label:**
+```
+Step 1: search_labels("your text", language="en-US")
+     → Returns matching labels with @LabelFileId:LabelId syntax
+Step 2: get_label_info("ACFeature", model="AslCore")
+     → Verify all required languages are present
+Step 3: Use @AslCore:ACFeature in X++ code or metadata XML
+```
+
+**Workflow for creating a new label:**
+```
+Step 1: search_labels("your text") — REQUIRED: check existing labels first!
+Step 2: get_label_info(model="AslCore") — list available label files in model
+Step 3: create_label(
+          labelId="MyNewField",
+          labelFileId="AslCore",
+          model="AslCore",
+          translations=[
+            {language:"en-US", text:"My new field"},
+            {language:"cs",    text:"Moje nové pole"},
+            {language:"de",    text:"Mein neues Feld"},
+            {language:"sk",    text:"Moje nové pole"}
+          ],
+          defaultComment="Description for developers"
+        )
+Step 4: Use @AslCore:MyNewField in code or XML
+```
+
+**Label reference syntax:**
+- In X++ code: `literalStr("@AslCore:MyLabel")` or `"@AslCore:MyLabel"` in string fields
+- In metadata XML: `<Label>@AslCore:MyLabel</Label>`
+- In field properties: `<HelpText>@AslCore:MyLabelHelp</HelpText>`
 
 ## Best Practices
 
@@ -198,6 +250,8 @@ Step 4: Create extension with exact signature from step 2
 - Use `search_extensions()` to filter out Microsoft standard code
 - Use `modify_d365fo_file()` with automatic backups for safe editing
 - Be specific in search queries (include context like "sales", "ledger", "inventory")
+- **Call `search_labels()` before `create_label()`** — always reuse existing labels when possible
+- Provide translations for ALL languages the model supports when calling `create_label()`
 
 ### ❌ DON'T:
 - Never use built-in file tools (`get_file`, `edit_file`, etc.) on .xml or .xpp files
@@ -207,6 +261,8 @@ Step 4: Create extension with exact signature from step 2
 - **Never combine `generate_d365fo_xml()` + `create_file()` — use `generate_d365fo_xml()` + `create_d365fo_file()` instead**
 - Don't use vague search terms — be specific about what you're looking for
 - Don't call `search()` after you already have the complete object from `get_class_info()`
+- **Never edit .label.txt files with `edit_file` or `replace_string_in_file`** — use `create_label()` which maintains sort order and updates the index
+- Never create a label without first calling `search_labels()` — duplicate labels waste translation effort
 
 ## Why MCP Tools Are Required
 

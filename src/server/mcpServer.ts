@@ -46,7 +46,24 @@ export function createXppMcpServer(context: XppServerContext): Server {
       tools: [
         {
           name: 'search',
-          description: 'Search for X++ classes, tables, methods, and fields by name or keyword',
+          description: `🔍 Search 584,799+ pre-indexed D365FO objects by exact name (e.g., "CustTable", "SalesFormLetter") or keywords (e.g., "dimension helper", "validation table"). Returns basic info: name, type, model.
+
+Use WHEN:
+- You don't know the exact object name
+- Exploring what exists in standard D365FO
+- Quick discovery before detailed analysis with get_class_info() or get_table_info()
+
+Use get_class_info() or get_table_info() INSTEAD when:
+- You already know the exact name AND need full source code/methods
+- You need complete structure (all methods with implementations)
+
+Use batch_search() INSTEAD when:
+- You need to search for multiple objects at once → 3x faster
+
+Examples:
+- "CustTable" → finds CustTable table
+- "sales helper" → finds SalesHelper, SalesFormLetterHelper, etc.
+- "dimension" with type="class" → finds all classes with "dimension" in name`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -125,7 +142,23 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'search_extensions',
-          description: 'Search for symbols only in custom extensions/ISV models',
+          description: `🔍 Search ONLY custom/ISV code, filtering out 500,000+ Microsoft standard objects. Essential for finding YOUR modifications vs. Microsoft's standard code.
+
+Filters to models tagged as:
+- Custom (your company's modifications)
+- ISV (third-party vendor extensions)  
+- VAR (partner extensions)
+
+Use WHEN:
+- Finding "what did WE change?"
+- Identifying custom extensions for a standard object (e.g., "CustTable")
+- Avoiding confusion between Microsoft standard code and your modifications
+- You only want to see custom/ISV classes, not the 500K+ Microsoft objects
+
+Examples:
+- "CustTable" → finds only YourCompany_CustTable_Extension (NOT Microsoft's CustTable)
+- "sales" with prefix="Contoso" → finds ContosoSalesHelper, ContosoSalesValidator
+- "dimension" → finds only YOUR custom dimension classes`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -138,7 +171,31 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_class_info',
-          description: 'Get detailed information about an X++ class including its methods',
+          description: `📊 Get COMPLETE class definition with ALL methods, full source code, inheritance chain, and attributes. Returns the ENTIRE class as if you opened the file in Visual Studio.
+
+Returns:
+- All methods with FULL signatures AND source code implementations
+- Inheritance (extends, implements interfaces)
+- Class attributes ([ExtensionOf], [SysObsolete], etc.)
+- All private/protected/public/static methods
+- Class-level properties
+
+Use WHEN:
+- You need to see method implementations (not just names)
+- Understanding class architecture before extending it
+- Creating Chain of Command (CoC) extensions (combine with get_method_signature())
+- Analyzing how a specific class works internally
+
+Use code_completion() INSTEAD when:
+- You only need method/field NAMES (IntelliSense-like)
+- You don't need source code implementations
+
+Use search() FIRST when:
+- You don't know the exact class name yet
+
+Examples:
+- get_class_info("SalesFormLetter") → returns full class with 50+ methods and complete source
+- get_class_info("CustTable") → returns table with fields + methods like validateWrite(), insert()`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -149,7 +206,26 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_table_info',
-          description: 'Get detailed information about an X++ table including fields, indexes, and relations',
+          description: `📊 Get complete table schema with all fields (types/EDTs), indexes (primary key, unique), foreign key relations, and table methods. Essential for understanding data structure before querying or extending tables.
+
+Returns:
+- All fields with Extended Data Types (EDT) or base types (int, str, real, etc.)
+- Indexes: primary key, unique indexes, clustered indexes
+- Relations: foreign keys to other tables with cardinality
+- Table properties: caching strategy, TableGroup, SaveDataPerCompany, etc.
+- Table methods: validateWrite(), insert(), update(), delete(), find() methods
+
+Use WHEN:
+- Understanding table structure before writing X++ queries
+- Creating table extensions with new fields
+- Understanding data relationships (foreign keys, navigation)
+- Before writing data migration or integration scripts
+- Analyzing table methods and validation logic
+
+Examples:
+- get_table_info("CustTable") → 100+ fields, relations to DirParty/LogisticsPostalAddress, indexes
+- get_table_info("SalesTable") → order header fields, relation to CustTable, SalesStatus field
+- get_table_info("InventTable") → product master fields, relations to EcoResProduct`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -160,7 +236,28 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'code_completion',
-          description: 'Get method and field completions for classes or tables - provides IntelliSense-like code completion',
+          description: `⚡ Get IntelliSense-like method and field name completions WITHOUT source code. Faster than get_class_info() when you only need member names, not implementations.
+
+Returns:
+- Method names with basic signatures (parameters, return types)
+- Field names with types
+- Filtered by prefix if specified (e.g., "calc*" finds calcAmount, calcDiscount)
+
+Use WHEN:
+- Writing code and need to see available methods/fields quickly
+- You know the class name but not which methods/fields it has
+- You want to filter by prefix for faster discovery
+- You don't need to see method source code
+
+Use get_class_info() INSTEAD when:
+- You need to see method SOURCE CODE implementations
+- You need to understand HOW methods work internally
+- Creating Chain of Command extensions (need full method body)
+
+Examples:
+- code_completion("SalesTable") → lists ~200 methods/fields (names only)
+- code_completion("SalesTable", prefix="calc") → calcAmount, calcDiscount, etc.
+- code_completion("CustTable", prefix="validate") → validateWrite, validateField, validateDelete`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -174,7 +271,30 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'generate_code',
-          description: 'Generate X++ code templates for common patterns',
+          description: `🛠️ Generate X++ boilerplate code for common D365FO patterns. Provides starter templates following Microsoft best practices.
+
+Available patterns:
+- class: Standard class with typical structure
+- runnable: Class for batch jobs/operations
+- form-handler: Form event handler class  
+- data-entity: Data entity with staging table
+- batch-job: Batch job with parm methods and contract
+- table-extension: Chain of Command (CoC) table extension [ExtensionOf(tableStr(...))]
+
+RECOMMENDED WORKFLOW:
+1. Call analyze_code_patterns("description") FIRST → learn from YOUR existing code
+2. Call generate_code(pattern, name) → get template
+3. Customize template based on patterns from step 1
+
+Use WHEN:
+- Starting a new class from scratch
+- Need correct class structure for specific pattern
+- Want Microsoft-recommended boilerplate
+
+Examples:
+- generate_code("class", "MySalesHelper") → basic class template
+- generate_code("batch-job", "OrderProcessing") → batch job with contract class
+- generate_code("table-extension", "CustTable_Extension") → CoC extension template`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -190,7 +310,26 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'analyze_code_patterns',
-          description: 'Analyze existing codebase for similar code patterns. Essential for creating code based on real D365FO patterns.',
+          description: `🧠 Analyze YOUR actual codebase to find most common classes, methods, and dependencies used in a scenario. Essential for creating code based on REAL D365FO patterns, not generic examples.
+
+Searches YOUR codebase and returns:
+- Most frequently used classes for the scenario
+- Common method patterns and naming conventions
+- Typical dependencies and imports
+- Real-world implementation examples
+
+⚠️ CALL THIS FIRST before generating new code to learn from existing patterns.
+
+Use WHEN:
+- Before creating new classes → see how similar classes are structured
+- Before implementing business logic → find similar implementations  
+- Learning D365FO conventions in your organization
+- Understanding how others solved similar problems
+
+Examples:
+- analyze_code_patterns("ledger journal creation") → finds LedgerJournalEngine, journal posting classes
+- analyze_code_patterns("sales order validation") → finds SalesTable validation patterns
+- analyze_code_patterns("dimension", classPattern="Helper") → finds dimension helper classes`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -203,7 +342,24 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'suggest_method_implementation',
-          description: 'Suggest method body implementation based on similar methods in the codebase. Provides real examples from actual D365FO code.',
+          description: `🧠 Find REAL implementation examples of similar methods in YOUR codebase. Shows how others implemented the same/similar method, not generic templates.
+
+Searches YOUR codebase and returns:
+- Real method implementations with similar name/purpose
+- Common patterns for method signature (parameters, return type)
+- Typical method body structure and logic flow
+- Dependencies and classes commonly used together
+
+Use WHEN:
+- Implementing a standard D365FO method (validateWrite, insert, update, etc.)
+- You know the method name but not how to implement it
+- Want to see real examples from your codebase
+- Creating Chain of Command extensions based on existing patterns
+
+Examples:
+- suggest_method_implementation("CustTable", "validateWrite") → shows how others validate customer data
+- suggest_method_implementation("SalesTable", "insert") → shows common insert() patterns
+- suggest_method_implementation("MyHelper", "calculate") → finds similar calculation methods`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -216,7 +372,23 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'analyze_class_completeness',
-          description: 'Analyze a class and suggest missing methods based on similar classes. Helps identify methods to follow common patterns.',
+          description: `🧠 Analyze a class and suggest missing methods by comparing with similar classes. Helps ensure your class follows common D365FO patterns and conventions.
+
+Analyzes YOUR codebase and returns:
+- Methods that similar classes have but your class is missing
+- Common method patterns in the same class category
+- Suggestions for standard methods (validateWrite, find, exist, etc.)
+- Completeness score based on similar classes
+
+Use WHEN:
+- After creating a new class → check if you're missing important methods
+- Reviewing existing class → ensure it follows patterns
+- Before code review → identify gaps
+- Learning what methods a class typically needs
+
+Examples:
+- analyze_class_completeness("MyCustomerHelper") → suggests missing find(), exist(), validate()
+- analyze_class_completeness("MySalesProcessor") → compares with other processor classes`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -227,7 +399,25 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_api_usage_patterns',
-          description: 'Get common usage patterns for a specific API or class. Shows initialization patterns and method call sequences.',
+          description: `🧠 Shows how a specific API/class is ACTUALLY used in YOUR codebase. Returns real initialization patterns and method call sequences, not documentation.
+
+Searches YOUR codebase and returns:
+- Common initialization patterns (how to create instances)
+- Typical method call sequences (what methods are called together and in what order)
+- Required setup/configuration before using the API
+- Common parameters and return value usage
+- Real usage examples from your code
+
+Use WHEN:
+- First time using a complex D365FO API/class
+- Need to understand correct initialization sequence
+- Want to see real examples instead of reading documentation
+- Understanding how others use a specific class
+
+Examples:
+- get_api_usage_patterns("LedgerJournalEngine") → shows initialization + posting sequence
+- get_api_usage_patterns("NumberSeq") → shows how to generate number sequences  
+- get_api_usage_patterns("DimensionAttributeValueSet") → dimension creation patterns`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -314,7 +504,26 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'find_references',
-          description: 'Find all references (where-used analysis) to a class, method, field, table, or enum. Essential for impact analysis and understanding dependencies.',
+          description: `🔍 Find ALL references (where-used analysis) to a class, method, field, table, or enum across entire D365FO codebase. Essential for impact analysis before making changes.
+
+Searches 584,799+ objects and returns:
+- All classes/methods that reference the target
+- File locations and line numbers
+- Context of how it's used (method calls, instantiation, etc.)
+- Dependencies and impact scope
+
+Use WHEN:
+- Before modifying/deleting a class, method, or field → understand impact
+- Finding all places that use a specific API
+- Understanding dependencies and coupling
+- Impact analysis for refactoring
+- "Who calls this method?"
+
+Examples:
+- find_references("DimensionAttributeValueSet") → finds all classes using dimensions
+- find_references("validateWrite", targetType="method") → finds all validateWrite() calls
+- find_references("CustTable.AccountNum", targetType="field") → finds all uses of AccountNum field
+- find_references("SalesStatus", targetType="enum") → finds all SalesStatus enum usage`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -420,7 +629,30 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_method_signature',
-          description: 'Get the exact method signature for a class method, including parameters, return type, and modifiers. Essential for creating Chain of Command (CoC) extensions with correct signatures.',
+          description: `⚙️ Get EXACT method signature including parameters, return type, and modifiers. CRITICAL for creating Chain of Command (CoC) extensions - incorrect signatures cause compilation errors.
+
+Returns:
+- Complete method signature with modifiers (public, protected, private, static, final)
+- All parameters with types and default values
+- Return type
+- Method attributes ([Hookable], [Replaceable], etc.)
+
+MANDATORY WORKFLOW for CoC extensions:
+1. get_method_signature(className, methodName) → get EXACT signature
+2. Copy signature EXACTLY (parameters, types, modifiers must match)
+3. Create extension with [ExtensionOf(classStr(...))] attribute
+4. Implement with next keyword for CoC pattern
+
+Use WHEN:
+- Creating Chain of Command extensions (REQUIRED)
+- Before overriding/extending methods
+- Need exact parameter types and default values
+- Verifying method accessibility (public/protected/private)
+
+Examples:
+- get_method_signature("CustTable", "validateWrite") → returns: public boolean validateWrite(boolean _insertMode = false)
+- get_method_signature("SalesTable", "insert") → returns: public void insert()
+- get_method_signature("NumberSeq", "num") → returns: public static NumberSeqCode num()`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -438,7 +670,26 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_form_info',
-          description: 'Get detailed information about a D365FO form, including datasources, controls (buttons, grids, tabs), methods, and form structure. Essential for form customization and understanding form architecture.',
+          description: `📋 Get complete D365FO form structure including datasources, control hierarchy (buttons, grids, tabs, groups), methods, and form architecture. Essential for form customization and extensions.
+
+Returns:
+- Datasources with fields, methods, and data source configuration
+- Control tree: ButtonGroups, Grids, Tabs, TabPages, Groups, Fields
+- Form methods (init, run, close, datasource methods)
+- Control properties (Visible, Enabled, Mandatory, etc.)
+- Event handlers and overrides
+
+Use WHEN:
+- Customizing forms with extensions
+- Understanding form structure before modifications
+- Finding control names for code extensions
+- Analyzing datasource relationships
+- Creating form event handlers
+
+Examples:
+- get_form_info("SalesTable") → SalesTable/SalesLine datasources, Overview/LineView grids, header/line fields
+- get_form_info("CustTable") → CustTable datasource, addresses grid, contact info tabs
+- get_form_info("PurchTable") → purchase order form structure with header/lines`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -461,7 +712,27 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_query_info',
-          description: 'Get detailed information about a D365FO query, including datasources, ranges, joins, grouping, and query structure. Essential for understanding and extending queries.',
+          description: `📊 Get complete D365FO query structure including datasources, joins, ranges, field lists, sorting, and grouping. Essential for understanding and extending queries used by forms, reports, and data entities.
+
+Returns:
+- All datasources in the query hierarchy
+- Joins between datasources (inner, outer, exists, notexists) with relations
+- Ranges (WHERE clause filters) with field, value, enabled status
+- Field lists (SELECT clause)
+- Sorting and grouping configuration
+- Query methods and dynamic behavior
+
+Use WHEN:
+- Understanding query logic before modification
+- Creating query extensions to add datasources/ranges
+- Analyzing report or form data sources
+- Debugging query performance issues
+- Understanding data relationships in queries
+
+Examples:
+- get_query_info("CustTransOpenQuery") → open customer transactions query with date/status ranges
+- get_query_info("InventTransQuery") → inventory transactions with item/site joins
+- get_query_info("LedgerJournalTransQuery") → journal lines query structure`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -484,7 +755,27 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_view_info',
-          description: 'Get detailed information about a D365FO view or data entity view, including mapped fields, computed columns, relations, methods, and view structure. Essential for data entity development and understanding view architecture.',
+          description: `📊 Get complete D365FO view or data entity structure including mapped fields, data sources, computed columns, relations, methods, and view architecture. Essential for data entity development and OData integration.
+
+Returns:
+- All fields with data source mappings
+- Computed columns (unmapped fields with methods)
+- Underlying tables and relations
+- View methods and business logic
+- Data entity properties (Public, IsPublic, DataManagementEnabled)
+- Staging table configuration (for data entities)
+
+Use WHEN:
+- Developing data entities for integration
+- Understanding OData API structure
+- Creating view extensions with new fields
+- Analyzing data entity business logic
+- Understanding DMF (Data Management Framework) entities
+
+Examples:
+- get_view_info("GeneralJournalAccountEntryView") → ledger entry view with dimension fields
+- get_view_info("CustCustomerV3Entity") → customer OData entity with party/address mappings
+- get_view_info("SalesOrderHeaderV2Entity") → sales order integration entity`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -507,7 +798,27 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'get_enum_info',
-          description: 'Get detailed information about a D365FO enum (enumeration), including all enum values, labels, and properties. Essential for understanding enum values and creating extensions.',
+          description: `🔢 Get complete D365FO enum (enumeration) definition including all enum values, integer values, labels, and properties. Essential for understanding enum options and creating enum extensions.
+
+Returns:
+- All enum values with their names
+- Integer value for each enum element
+- Labels/descriptions for each value
+- Enum properties (UseEnumValue, ConfigurationKey, etc.)
+- Style configuration (for display)
+
+Use WHEN:
+- Understanding available enum values for a field
+- Creating enum extensions with new values
+- Writing code that checks enum values
+- Understanding enum integer values for database queries
+- Documenting enum options
+
+Examples:
+- get_enum_info("SalesStatus") → None=0, Backorder=1, Delivered=2, Invoiced=3, Canceled=4
+- get_enum_info("NoYes") → No=0, Yes=1 (most common boolean enum)
+- get_enum_info("CustAccountType") → Customer=0, Vendor=1, Employee=2, etc.
+- get_enum_info("BOMType") → BOM types for production orders`,
           inputSchema: {
             type: 'object',
             properties: {

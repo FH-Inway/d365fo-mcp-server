@@ -181,6 +181,54 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_patterns_type ON code_patterns(pattern_type);
       CREATE INDEX IF NOT EXISTS idx_patterns_domain ON code_patterns(domain);
     `);
+
+    // Create labels table for AxLabelFile indexing
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS labels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label_id TEXT NOT NULL,
+        label_file_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        language TEXT NOT NULL,
+        text TEXT NOT NULL,
+        comment TEXT,
+        file_path TEXT NOT NULL
+      );
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_labels_id ON labels(label_id);
+      CREATE INDEX IF NOT EXISTS idx_labels_file_id ON labels(label_file_id);
+      CREATE INDEX IF NOT EXISTS idx_labels_model ON labels(model);
+      CREATE INDEX IF NOT EXISTS idx_labels_language ON labels(language);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_labels_unique
+        ON labels(label_id, label_file_id, model, language);
+    `);
+
+    // FTS5 full-text search for labels (text + comment, searched across all languages)
+    this.db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS labels_fts USING fts5(
+        label_id,
+        text,
+        comment,
+        content='labels',
+        content_rowid='id'
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels BEGIN
+        INSERT INTO labels_fts(rowid, label_id, text, comment)
+        VALUES (new.id, new.label_id, new.text, new.comment);
+      END;
+      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels BEGIN
+        DELETE FROM labels_fts WHERE rowid = old.id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels BEGIN
+        UPDATE labels_fts SET label_id = new.label_id, text = new.text, comment = new.comment
+        WHERE rowid = new.id;
+      END;
+    `);
   }
 
   /**
@@ -1380,5 +1428,250 @@ export class XppSymbolIndex {
   close(): void {
     this.stmtCache.clear();
     this.db.close();
+  }
+
+  // ============================================
+  // Label Methods
+  // ============================================
+
+  /**
+   * Add (or replace) a label entry in the index
+   */
+  addLabel(entry: {
+    labelId: string;
+    labelFileId: string;
+    model: string;
+    language: string;
+    text: string;
+    comment?: string;
+    filePath: string;
+  }): void {
+    let stmt = this.stmtCache.get('addLabel');
+    if (!stmt) {
+      stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      this.stmtCache.set('addLabel', stmt);
+    }
+    stmt.run(
+      entry.labelId,
+      entry.labelFileId,
+      entry.model,
+      entry.language,
+      entry.text,
+      entry.comment ?? null,
+      entry.filePath,
+    );
+  }
+
+  /**
+   * Bulk-insert labels (skips FTS triggers for speed; call rebuildLabelsFts() after)
+   */
+  bulkAddLabels(
+    entries: Array<{
+      labelId: string;
+      labelFileId: string;
+      model: string;
+      language: string;
+      text: string;
+      comment?: string;
+      filePath: string;
+    }>,
+  ): void {
+    // Disable FTS triggers during bulk insert
+    this.db.exec(`DROP TRIGGER IF EXISTS labels_ai`);
+    this.db.exec(`DROP TRIGGER IF EXISTS labels_ad`);
+    this.db.exec(`DROP TRIGGER IF EXISTS labels_au`);
+
+    const insert = this.db.prepare(`
+      INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((rows: typeof entries) => {
+      for (const e of rows) {
+        insert.run(e.labelId, e.labelFileId, e.model, e.language, e.text, e.comment ?? null, e.filePath);
+      }
+    });
+
+    insertMany(entries);
+
+    // Rebuild FTS
+    this.rebuildLabelsFts();
+
+    // Re-create triggers
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels BEGIN
+        INSERT INTO labels_fts(rowid, label_id, text, comment)
+        VALUES (new.id, new.label_id, new.text, new.comment);
+      END;
+      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels BEGIN
+        DELETE FROM labels_fts WHERE rowid = old.id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels BEGIN
+        UPDATE labels_fts SET label_id = new.label_id, text = new.text, comment = new.comment
+        WHERE rowid = new.id;
+      END;
+    `);
+  }
+
+  /**
+   * Rebuild the FTS index for labels from scratch
+   */
+  rebuildLabelsFts(): void {
+    this.db.exec(`INSERT INTO labels_fts(labels_fts) VALUES('rebuild')`);
+  }
+
+  /**
+   * Full-text search labels (default language: en-US, falls back to any)
+   */
+  searchLabels(
+    query: string,
+    opts: { language?: string; model?: string; limit?: number } = {},
+  ): Array<{
+    labelId: string;
+    labelFileId: string;
+    model: string;
+    language: string;
+    text: string;
+    comment: string | null;
+    filePath: string;
+    rank: number;
+  }> {
+    const { language = 'en-US', model, limit = 30 } = opts;
+
+    // Sanitize query for FTS5 (escape special chars)
+    const ftsQuery = query.replace(/['"*()]/g, ' ').trim();
+    if (!ftsQuery) return [];
+
+    let sql: string;
+    const params: any[] = [];
+
+    if (model) {
+      sql = `
+        SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
+               f.rank
+        FROM labels_fts f
+        JOIN labels l ON l.id = f.rowid
+        WHERE labels_fts MATCH ?
+          AND l.model = ?
+          AND l.language = ?
+        ORDER BY f.rank
+        LIMIT ?
+      `;
+      params.push(ftsQuery, model, language, limit);
+    } else {
+      sql = `
+        SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
+               f.rank
+        FROM labels_fts f
+        JOIN labels l ON l.id = f.rowid
+        WHERE labels_fts MATCH ?
+          AND l.language = ?
+        ORDER BY f.rank
+        LIMIT ?
+      `;
+      params.push(ftsQuery, language, limit);
+    }
+
+    try {
+      const stmt = this.db.prepare(sql);
+      return stmt.all(...params) as any[];
+    } catch {
+      // FTS query syntax error — fallback to LIKE
+      return this.searchLabelsLike(query, opts);
+    }
+  }
+
+  /**
+   * LIKE-based fallback label search (for queries with special characters)
+   */
+  private searchLabelsLike(
+    query: string,
+    opts: { language?: string; model?: string; limit?: number } = {},
+  ): any[] {
+    const { language = 'en-US', model, limit = 30 } = opts;
+    const pattern = `%${query}%`;
+    const params: any[] = [pattern, pattern, language];
+    let sql = `
+      SELECT label_id, label_file_id, model, language, text, comment, file_path, 0 as rank
+      FROM labels
+      WHERE (text LIKE ? OR label_id LIKE ?)
+        AND language = ?
+    `;
+    if (model) {
+      sql += ` AND model = ?`;
+      params.push(model);
+    }
+    sql += ` LIMIT ?`;
+    params.push(limit);
+    return this.db.prepare(sql).all(...params) as any[];
+  }
+
+  /**
+   * Get a single label by exact ID (returns all languages)
+   */
+  getLabelById(
+    labelId: string,
+    labelFileId?: string,
+    model?: string,
+  ): Array<{
+    labelId: string;
+    labelFileId: string;
+    model: string;
+    language: string;
+    text: string;
+    comment: string | null;
+    filePath: string;
+  }> {
+    const params: any[] = [labelId];
+    let sql = `
+      SELECT label_id AS labelId, label_file_id AS labelFileId, model, language, text, comment, file_path AS filePath
+      FROM labels
+      WHERE label_id = ?
+    `;
+    if (labelFileId) { sql += ` AND label_file_id = ?`; params.push(labelFileId); }
+    if (model)       { sql += ` AND model = ?`;         params.push(model); }
+    sql += ` ORDER BY language`;
+    return this.db.prepare(sql).all(...params) as any[];
+  }
+
+  /**
+   * Get all label file IDs for a model (i.e. which AxLabelFiles exist)
+   */
+  getLabelFileIds(model?: string): Array<{ labelFileId: string; model: string; languages: string }> {
+    if (model) {
+      return this.db.prepare(`
+        SELECT label_file_id AS labelFileId, model, GROUP_CONCAT(DISTINCT language) AS languages
+        FROM labels
+        WHERE model = ?
+        GROUP BY label_file_id, model
+        ORDER BY label_file_id
+      `).all(model) as any[];
+    }
+    return this.db.prepare(`
+      SELECT label_file_id AS labelFileId, model, GROUP_CONCAT(DISTINCT language) AS languages
+      FROM labels
+      GROUP BY label_file_id, model
+      ORDER BY label_file_id
+    `).all() as any[];
+  }
+
+  /**
+   * Remove all labels for the given models (used during incremental rebuild)
+   */
+  clearLabelsForModels(models: string[]): void {
+    const placeholders = models.map(() => '?').join(',');
+    this.db.prepare(`DELETE FROM labels WHERE model IN (${placeholders})`).run(...models);
+    this.rebuildLabelsFts();
+  }
+
+  /**
+   * Total label count
+   */
+  getLabelCount(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS cnt FROM labels`).get() as any;
+    return row?.cnt ?? 0;
   }
 }

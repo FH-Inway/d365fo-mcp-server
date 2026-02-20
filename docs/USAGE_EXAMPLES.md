@@ -14,6 +14,7 @@ Practical examples you can copy and paste directly into Copilot Chat.
 - [Financial Dimensions](#financial-dimensions)
 - [Ledger Journals](#ledger-journals)
 - [Form Extensions](#form-extensions)
+- [Working with Labels](#working-with-labels)
 
 ---
 
@@ -285,3 +286,95 @@ file tools. Full automation (write + add to project) requires the server running
 **What if Copilot generates the wrong model name?**
 Add a `workspacePath` to your `.mcp.json` or check that your solution is open
 in Visual Studio. See [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md).
+
+---
+
+## Working with Labels
+
+### Find an existing label before creating a new one
+
+Always search first — reusing an existing label avoids duplication and saves translation effort.
+
+```
+Find a label for the text "customer account" in AslCore
+```
+
+Copilot will:
+1. Call `search_labels` with full-text search across label IDs, text, and comments
+2. Return matching labels with their `@LabelFileId:LabelId` reference
+3. Show the label text and a ready-to-use X++ snippet
+
+```
+Search for labels about "invoice" in the AslCore model
+Find all labels matching "vendor" in English
+```
+
+### View all translations for a label
+
+```
+Show me all translations of label ACFeature in AslCore
+```
+
+Copilot will:
+1. Call `get_label_info` with the label ID
+2. Return translations in every indexed language (en-US, cs, de, sk…)
+3. Show the developer comment and generate X++ / XML usage snippets:
+   - X++: `literalStr("@AslCore:ACFeature")`
+   - XML: `<Label>@AslCore:ACFeature</Label>`
+
+### List all label files in a model
+
+```
+What label files does the AslCore model have?
+List all AxLabelFile IDs available in AslCore
+```
+
+Copilot will call `get_label_info` without a label ID and return a table of
+file IDs, supported languages, and label counts.
+
+### Create a new label with all language translations
+
+```
+Create a new label MyNewField in the AslCore model with the text:
+- en-US: "Customer account number"
+- cs: "Číslo účtu zákazníka"
+- de: "Kundenkontaktsnummer"
+- sk: "Číslo účtu zákazníka"
+```
+
+Copilot will:
+1. Call `search_labels` first to confirm the label doesn't already exist
+2. Call `create_label` with the translations for all supported languages
+3. Insert the label alphabetically into every `.label.txt` file
+4. Update the MCP index so the new label is immediately searchable
+5. Return the ready-to-use reference: `@AslCore:MyNewField`
+
+### Use a label in X++ code and metadata
+
+After searching for or creating a label:
+
+```
+How do I use label @AslCore:MyNewField in X++ code?
+Generate the metadata XML property for @AslCore:MyNewField
+```
+
+In X++ source code:
+```xpp
+str labelText = literalStr("@AslCore:MyNewField");
+```
+
+In metadata XML (field property):
+```xml
+<Label>@AslCore:MyNewField</Label>
+<HelpText>@AslCore:MyNewFieldHelp</HelpText>
+```
+
+### Check a label in a specific language
+
+```
+Find the Czech translation of label BatchGroup in AslCore
+Search for labels containing "dávk" in Czech (cs) language
+```
+
+Use the `language` parameter in `search_labels` to restrict results to a
+specific locale.

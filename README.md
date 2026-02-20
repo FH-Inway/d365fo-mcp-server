@@ -37,7 +37,7 @@ writing code.
 
 ## What It Does
 
-You get **20 tools** for D365FO code intelligence. You ask Copilot in plain English; it picks
+You get **23 tools** for D365FO code intelligence. You ask Copilot in plain English; it picks
 the right tool automatically.
 
 ### Finding and Exploring Code
@@ -58,6 +58,13 @@ the right tool automatically.
 - On a local Windows VM: writes the file directly to the right AOT location
 - Automatically adds the new file to your Visual Studio project (.rnrproj)
 - Safely edits existing files with an automatic backup before every change
+
+### Working with Labels
+- Full-text search across all indexed AxLabelFile labels — finds labels by ID, text, or comment
+- Shows all language translations for any label (en-US, cs, de, sk, …)
+- Lists all AxLabelFile IDs available in a model
+- Creates new labels in all language `.label.txt` files at once, inserted alphabetically
+- Generates ready-to-use `@LabelFileId:LabelId` references for X++ code and metadata XML
 
 ---
 
@@ -174,6 +181,12 @@ Create a CoC extension for SalesTable.validateWrite()
 Check whether my class MyHelper is missing any standard methods
 
 Find all my custom extensions for classes starting with ISV_
+
+Find a label for the text "customer account" in AslCore
+
+Show me all translations of the label ACFeature in AslCore
+
+Create a new label MyNewField in the AslCore model with Czech and English translations
 ```
 
 More examples in [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md).
@@ -204,7 +217,7 @@ Full setup instructions in [docs/SETUP.md](docs/SETUP.md).
 | [docs/SETUP.md](docs/SETUP.md) | Installation, environment config, Azure deployment |
 | [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | The `.mcp.json` file — workspace paths and project settings |
 | [docs/WORKSPACE_DETECTION.md](docs/WORKSPACE_DETECTION.md) | How the server auto-detects your model from `.rnrproj` |
-| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 20 tools explained with example prompts |
+| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 23 tools explained with example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: searching, code generation, CoC extensions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture (for contributors) |
 | [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV partner and custom model configuration |

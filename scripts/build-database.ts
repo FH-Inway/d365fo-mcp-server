@@ -14,12 +14,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/modelClassifier.js';
+import { indexAllLabels } from '../src/metadata/labelParser.js';
 
 const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
 const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
 const CUSTOM_MODELS = getCustomModels();
 const FORCE_VACUUM = process.env.VACUUM === 'true';
+// Labels are indexed from PackagesLocalDirectory directly (not from extracted-metadata)
+const PACKAGES_PATH = process.env.PACKAGES_PATH || 'K:\\AosService\\PackagesLocalDirectory';
+const INCLUDE_LABELS = process.env.INCLUDE_LABELS !== 'false'; // default: true
 
 async function buildDatabase() {
   console.log('🔨 Building X++ Metadata Database');
@@ -132,6 +136,51 @@ async function buildDatabase() {
   const count = symbolIndex.getSymbolCount();
   console.log(`✅ Database built successfully in ${duration}s!`);
   console.log(`📊 Total symbols: ${count}`);
+
+  // ── Label Indexing ─────────────────────────────────────────────────────────
+  if (INCLUDE_LABELS) {
+    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}`);
+    if (!fsSync.existsSync(PACKAGES_PATH)) {
+      console.log(`   ⚠️  PackagesLocalDirectory not found at "${PACKAGES_PATH}" — skipping labels.`);
+      console.log(`   ℹ️  Set PACKAGES_PATH env var to the correct path, or INCLUDE_LABELS=false to suppress this message.`);
+    } else {
+      const labelStart = Date.now();
+
+      // For incremental builds, clear only the affected models' labels
+      if (modelsToRebuild.length > 0) {
+        symbolIndex.clearLabelsForModels(modelsToRebuild);
+        const { totalLabels, modelsIndexed } = await indexAllLabels(
+          symbolIndex,
+          PACKAGES_PATH,
+          (modelName) => modelsToRebuild.includes(modelName),
+        );
+        const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
+        console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+      } else {
+        // Full rebuild — determine model filter based on EXTRACT_MODE
+        let labelModelFilter: ((m: string) => boolean) | undefined;
+        if (EXTRACT_MODE === 'custom') {
+          labelModelFilter = (m) => isCustomModel(m);
+        } else if (EXTRACT_MODE === 'standard') {
+          labelModelFilter = (m) => isStandardModel(m);
+        }
+        // else: no filter — index all models
+
+        const { totalLabels, modelsIndexed } = await indexAllLabels(
+          symbolIndex,
+          PACKAGES_PATH,
+          labelModelFilter,
+        );
+        const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
+        console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+      }
+
+      const labelCount = symbolIndex.getLabelCount();
+      console.log(`   📊 Total labels in database: ${labelCount}`);
+    }
+  } else {
+    console.log('\n⏭️  Skipping label indexing (INCLUDE_LABELS=false)');
+  }
 
   // Convert to WAL mode for production use (better concurrency)
   console.log('\n🔄 Converting database to WAL mode for production...');

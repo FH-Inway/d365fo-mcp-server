@@ -1,0 +1,375 @@
+/**
+ * Create Label Tool
+ * Adds a new label to an existing AxLabelFile in a custom model.
+ *
+ * For each language that has a .label.txt file in the model, the tool:
+ *  1. Checks that the label ID does not already exist
+ *  2. Inserts the label in alphabetical order
+ *  3. Writes the updated file back to disk
+ *  4. Updates the SQLite label index
+ *
+ * If the AxLabelFile does not exist yet (new label file), the tool also
+ * creates the XML descriptor files and directory structure.
+ */
+
+import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import type { XppServerContext } from '../types/context.js';
+import type { XppSymbolIndex } from '../metadata/symbolIndex.js';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+
+// ── Input schema ─────────────────────────────────────────────────────────────
+
+const TranslationSchema = z.object({
+  language: z.string().describe('Locale code (e.g. en-US, cs, de, sk)'),
+  text: z.string().describe('Translated label text for this language'),
+  comment: z.string().optional().describe('Optional developer comment for this language'),
+});
+
+const CreateLabelArgsSchema = z.object({
+  labelId: z
+    .string()
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Label ID must be alphanumeric (no spaces)')
+    .describe(
+      'Label identifier — must be unique within the label file, e.g. MyNewField or AslMyFeature',
+    ),
+  labelFileId: z
+    .string()
+    .describe('Label file ID to add the label to (e.g. AslCore). Must exist in the model.'),
+  model: z
+    .string()
+    .describe('Model name that owns the label file (e.g. AslCore, MyExtensions)'),
+  translations: z
+    .array(TranslationSchema)
+    .min(1)
+    .describe(
+      'Label text for each language. At minimum provide en-US. ' +
+        'For languages without a translation the en-US text is used as fallback.',
+    ),
+  defaultComment: z
+    .string()
+    .optional()
+    .describe('Developer comment used for languages that have no explicit comment'),
+  packagePath: z
+    .string()
+    .optional()
+    .default('K:\\AosService\\PackagesLocalDirectory')
+    .describe('Root packages path (default: K:\\AosService\\PackagesLocalDirectory)'),
+  createLabelFileIfMissing: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'If true and the AxLabelFile does not exist yet, create it with the provided translations. ' +
+        'Set to false (default) to fail fast when the label file is missing.',
+    ),
+  updateIndex: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Update the MCP label index after writing files (default: true)'),
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Parse a .label.txt file into an ordered map: labelId → { text, comment } */
+function parseLabelMap(content: string): Map<string, { text: string; comment?: string }> {
+  const map = new Map<string, { text: string; comment?: string }>();
+  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let lastId: string | null = null;
+
+  for (const line of lines) {
+    if (line === '') continue;
+    if (line.startsWith(' ;') || line.startsWith('\t;')) {
+      if (lastId) {
+        const existing = map.get(lastId)!;
+        const commentText = line.replace(/^[ \t];/, '').trim();
+        existing.comment = existing.comment
+          ? `${existing.comment} ${commentText}`
+          : commentText;
+      }
+      continue;
+    }
+    const eqIdx = line.indexOf('=');
+    if (eqIdx > 0) {
+      const labelId = line.substring(0, eqIdx).trim();
+      const text = line.substring(eqIdx + 1);
+      if (labelId && !/\s/.test(labelId)) {
+        map.set(labelId, { text });
+        lastId = labelId;
+      }
+    }
+  }
+  return map;
+}
+
+/** Render a label map back to .label.txt content (alphabetically sorted) */
+function serializeLabelMap(map: Map<string, { text: string; comment?: string }>): string {
+  const sorted = [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+  const lines: string[] = [];
+  for (const [id, { text, comment }] of sorted) {
+    lines.push(`${id}=${text}`);
+    if (comment) lines.push(` ;${comment}`);
+  }
+  // End with a newline
+  return lines.join('\n') + '\n';
+}
+
+/** XML descriptor content for a new AxLabelFile locale */
+function buildAxLabelFileXml(
+  labelFileId: string,
+  language: string,
+  model: string,
+): string {
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>\n` +
+    `<AxLabelFile xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n` +
+    `\t<Name>${labelFileId}_${language}</Name>\n` +
+    `\t<LabelContentFileName>${labelFileId}.${language}.label.txt</LabelContentFileName>\n` +
+    `\t<LabelFileId>${labelFileId}</LabelFileId>\n` +
+    `\t<RelativeUriInModelStore>${model}\\${model}\\AxLabelFile\\LabelResources\\${language}\\${labelFileId}.${language}.label.txt</RelativeUriInModelStore>\n` +
+    `</AxLabelFile>\n`
+  );
+}
+
+// ── Tool implementation ───────────────────────────────────────────────────────
+
+export async function createLabelTool(request: CallToolRequest, context: XppServerContext) {
+  try {
+    const args = CreateLabelArgsSchema.parse(request.params.arguments);
+    const {
+      labelId,
+      labelFileId,
+      model,
+      translations,
+      defaultComment,
+      packagePath,
+      createLabelFileIfMissing,
+      updateIndex,
+    } = args;
+    const { symbolIndex } = context;
+
+    // 1. Resolve model directory
+    const modelDir = path.join(packagePath, model, model);
+    const axLabelDir = path.join(modelDir, 'AxLabelFile');
+    const labelResourcesDir = path.join(axLabelDir, 'LabelResources');
+
+    // Build a quick lookup: language → translation entry
+    const translationMap = new Map<string, { text: string; comment?: string }>();
+    for (const tr of translations) {
+      translationMap.set(tr.language, { text: tr.text, comment: tr.comment ?? defaultComment });
+    }
+    const enUsText = translationMap.get('en-US')?.text ?? translations[0].text;
+
+    // 2. Discover existing language folders
+    let existingLanguages: string[] = [];
+    try {
+      existingLanguages = await fs.readdir(labelResourcesDir);
+    } catch {
+      // LabelResources dir does not exist yet
+    }
+
+    // 3. If no existing languages, decide whether to create
+    if (existingLanguages.length === 0) {
+      if (!createLabelFileIfMissing) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `AxLabelFile "${labelFileId}" not found in model "${model}" ` +
+                `(expected path: ${labelResourcesDir}).\n\n` +
+                `Set createLabelFileIfMissing=true to create the label file from scratch, ` +
+                `or use create_d365fo_file to scaffold the label file first.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Create the LabelResources directory structure
+      for (const [lang] of translationMap) {
+        existingLanguages.push(lang);
+        const langDir = path.join(labelResourcesDir, lang);
+        await fs.mkdir(langDir, { recursive: true });
+
+        // Create the empty .label.txt (will be written below)
+        const txtPath = path.join(langDir, `${labelFileId}.${lang}.label.txt`);
+        try { await fs.access(txtPath); } catch { await fs.writeFile(txtPath, '', 'utf-8'); }
+
+        // Create XML descriptor
+        const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
+        try { await fs.access(xmlPath); } catch {
+          await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, model), 'utf-8');
+        }
+      }
+    }
+
+    // 4. Process each existing language
+    const written: string[] = [];
+    const skipped: string[] = [];
+    type LabelEntry = Parameters<XppSymbolIndex['bulkAddLabels']>[0][number];
+    const indexEntries: LabelEntry[] = [];
+
+    for (const lang of existingLanguages) {
+      const langDir = path.join(labelResourcesDir, lang);
+      const txtPath = path.join(langDir, `${labelFileId}.${lang}.label.txt`);
+
+      // Read existing content (may not exist for newly-created langs)
+      let content = '';
+      try {
+        content = await fs.readFile(txtPath, 'utf-8');
+      } catch {
+        // File doesn't exist yet — start empty
+      }
+
+      const labelMap = parseLabelMap(content);
+
+      // Duplicate check
+      if (labelMap.has(labelId)) {
+        skipped.push(`${lang} (already exists: "${labelMap.get(labelId)!.text}")`);
+        continue;
+      }
+
+      // Determine text for this language
+      const entry = translationMap.get(lang) ?? { text: enUsText, comment: defaultComment };
+      labelMap.set(labelId, entry);
+
+      // Ensure the directory exists
+      await fs.mkdir(langDir, { recursive: true });
+
+      // Write updated file
+      const newContent = serializeLabelMap(labelMap);
+      await fs.writeFile(txtPath, newContent, 'utf-8');
+      written.push(lang);
+
+      // Prepare index update
+      if (updateIndex) {
+        indexEntries.push({
+          labelId,
+          labelFileId,
+          model,
+          language: lang,
+          text: entry.text,
+          comment: entry.comment,
+          filePath: txtPath,
+        });
+      }
+
+      // Ensure XML descriptor exists for this language
+      const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
+      try {
+        await fs.access(xmlPath);
+      } catch {
+        await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, model), 'utf-8');
+      }
+    }
+
+    // 5. Update SQLite index
+    if (updateIndex && indexEntries.length > 0) {
+      symbolIndex.bulkAddLabels(indexEntries);
+    }
+
+    // 6. Build result summary
+    if (written.length === 0 && skipped.length > 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `⚠️ Label "${labelId}" already exists in all languages:\n` +
+              skipped.map(s => `  - ${s}`).join('\n') +
+              '\n\nNo changes were made.',
+          },
+        ],
+      };
+    }
+
+    const ref = `@${labelFileId}:${labelId}`;
+    const lines: string[] = [
+      `✅ Label "${ref}" created successfully!`,
+      '',
+      `Label ID   : ${labelId}`,
+      `Label File : ${labelFileId}  (model: ${model})`,
+      '',
+      'Written to languages:',
+      ...written.map(l => `  ✔ ${l}  → ${translationMap.get(l)?.text ?? enUsText}`),
+    ];
+    if (skipped.length > 0) {
+      lines.push('');
+      lines.push('Skipped (already existed):');
+      lines.push(...skipped.map(s => `  ⚠ ${s}`));
+    }
+    lines.push('');
+    lines.push('Use in X++:');
+    lines.push(`  literalStr("${ref}")`);
+    lines.push('');
+    lines.push('Use in metadata XML:');
+    lines.push(`  <Label>${ref}</Label>`);
+    lines.push(`  <HelpText>${ref}</HelpText>`);
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  } catch (err: any) {
+    return {
+      content: [{ type: 'text', text: `Error creating label: ${err.message}` }],
+      isError: true,
+    };
+  }
+}
+
+export const createLabelToolDefinition = {
+  name: 'create_label',
+  description:
+    'Add a new label to an existing AxLabelFile in a custom D365FO model. ' +
+    'Writes the label into every language .label.txt file that exists in the model, ' +
+    'inserts in alphabetical order, and updates the MCP index. ' +
+    'Always call search_labels first to check if a suitable label already exists.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      labelId: {
+        type: 'string',
+        description: 'Unique label identifier (alphanumeric, no spaces), e.g. MyNewField',
+      },
+      labelFileId: {
+        type: 'string',
+        description: 'Label file ID that the label belongs to (e.g. AslCore)',
+      },
+      model: {
+        type: 'string',
+        description: 'Model name (e.g. AslCore, MyExtensions)',
+      },
+      translations: {
+        type: 'array',
+        description: 'Translations for each language. Provide at least en-US.',
+        items: {
+          type: 'object',
+          properties: {
+            language: { type: 'string', description: 'Locale code, e.g. en-US, cs, de, sk' },
+            text: { type: 'string', description: 'Label text in this language' },
+            comment: { type: 'string', description: 'Optional developer comment' },
+          },
+          required: ['language', 'text'],
+        },
+      },
+      defaultComment: {
+        type: 'string',
+        description: 'Developer comment for languages without an explicit comment',
+      },
+      packagePath: {
+        type: 'string',
+        description: 'Root PackagesLocalDirectory path (default: K:\\AosService\\PackagesLocalDirectory)',
+      },
+      createLabelFileIfMissing: {
+        type: 'boolean',
+        description: 'Create AxLabelFile structure if it does not exist yet (default: false)',
+      },
+      updateIndex: {
+        type: 'boolean',
+        description: 'Update the MCP label index after writing (default: true)',
+      },
+    },
+    required: ['labelId', 'labelFileId', 'model', 'translations'],
+  },
+};

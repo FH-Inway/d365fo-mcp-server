@@ -77,7 +77,7 @@ async function buildFts(): Promise<void> {
 
   // ── Label Indexing ─────────────────────────────────────────────────────────
   if (INCLUDE_LABELS) {
-    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}`);
+    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}/{Model}/{Model}/AxLabelFile/...`);
     if (!fsSync.existsSync(PACKAGES_PATH)) {
       console.log(`   ⚠️  PackagesLocalDirectory not found at "${PACKAGES_PATH}" — skipping labels.`);
       console.log(`   ℹ️  Set PACKAGES_PATH env var to the correct path, or INCLUDE_LABELS=false to suppress.`);

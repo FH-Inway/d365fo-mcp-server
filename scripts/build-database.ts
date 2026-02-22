@@ -95,17 +95,24 @@ async function buildDatabase() {
       }
       
       modelsToRebuild = [...new Set(expandedModels)]; // Remove duplicates
-      console.log(`🗑️  Cleared symbols for models: ${CUSTOM_MODELS.join(', ')}`);
+      console.log(`🗑️  Clearing symbols for models: ${CUSTOM_MODELS.join(', ')}`);
       if (modelsToRebuild.length !== CUSTOM_MODELS.length) {
         console.log(`   📌 Expanded to ${modelsToRebuild.length} models: ${modelsToRebuild.slice(0, 5).join(', ')}${modelsToRebuild.length > 5 ? '...' : ''}`);
       }
       symbolIndex.clearModels(modelsToRebuild, shouldVacuum);
     } else {
-      // Clear all custom models (exclude standard)
+      // When CUSTOM_MODELS is not specified, treat ALL models in INPUT_PATH as custom
+      // This is correct for incremental builds where extract-metadata already filtered to custom models
       const allModels = fsSync.readdirSync(INPUT_PATH, { withFileTypes: true })
         .filter(e => e.isDirectory())
         .map(e => e.name);
-      modelsToRebuild = allModels.filter(m => isCustomModel(m));
+      
+      console.log(`🗑️  No CUSTOM_MODELS specified. Treating all ${allModels.length} model(s) in INPUT_PATH as custom`);
+      console.log(`   📦 Models to rebuild: ${allModels.slice(0, 10).join(', ')}${allModels.length > 10 ? '...' : ''}`);
+      
+      // CRITICAL: Use allModels directly, NOT filtered by isCustomModel()
+      // The filtering was already done by extract-metadata when it populated INPUT_PATH
+      modelsToRebuild = allModels;
       symbolIndex.clearModels(modelsToRebuild, shouldVacuum);
     }
   } else if (EXTRACT_MODE === 'standard') {
@@ -123,12 +130,16 @@ async function buildDatabase() {
   
   if (modelsToRebuild.length > 0) {
     // Index specific models
-    console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.join(', ')}`);
+    console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.slice(0, 10).join(', ')}${modelsToRebuild.length > 10 ? '...' : ''}`);
+    console.log(`   ℹ️  Incremental build: Standard models in database will be preserved`);
     for (const modelName of modelsToRebuild) {
       await symbolIndex.indexMetadataDirectory(INPUT_PATH, modelName);
     }
   } else {
     // Index all models in the directory
+    console.log(`📦 Indexing ALL models from: ${INPUT_PATH}`);
+    console.log(`   ⚠️  WARNING: This should only happen for EXTRACT_MODE=all (full rebuild)`);
+    console.log(`   ⚠️  Current EXTRACT_MODE: ${EXTRACT_MODE}`);
     await symbolIndex.indexMetadataDirectory(INPUT_PATH);
   }
   
@@ -157,7 +168,7 @@ async function buildDatabase() {
   if (SKIP_FTS) {
     console.log('\n⏭️  Skipping label indexing (SKIP_FTS=true) — will be indexed by build-fts step');
   } else if (INCLUDE_LABELS) {
-    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}`);
+    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}/{Model}/{Model}/AxLabelFile/...`);
     if (!fsSync.existsSync(PACKAGES_PATH)) {
       console.log(`   ⚠️  PackagesLocalDirectory not found at "${PACKAGES_PATH}" — skipping labels.`);
       console.log(`   ℹ️  Set PACKAGES_PATH env var to the correct path, or INCLUDE_LABELS=false to suppress this message.`);

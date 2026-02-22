@@ -84,6 +84,7 @@ export function parseLabelFile(
  */
 export async function discoverLabelFiles(
   modelDir: string,  // e.g. K:\AosService\PackagesLocalDirectory\AslCore\AslCore
+  verbose: boolean = false,
 ): Promise<Array<{ labelFileId: string; language: string; filePath: string }>> {
   const results: Array<{ labelFileId: string; language: string; filePath: string }> = [];
   const axLabelDir = path.join(modelDir, 'AxLabelFile', 'LabelResources');
@@ -99,7 +100,10 @@ export async function discoverLabelFiles(
   let locales: string[];
   try {
     locales = await fs.readdir(axLabelDir);
-  } catch {
+  } catch (err) {
+    if (verbose) {
+      console.log(`      ℹ️  No AxLabelFile/LabelResources in ${modelDir}`);
+    }
     return results; // No AxLabelFile folder
   }
 
@@ -153,9 +157,9 @@ export async function indexModelLabels(
   symbolIndex: XppSymbolIndex,
   modelDir: string,
   model: string,
-  opts?: { skipFtsRebuild?: boolean },
+  opts?: { skipFtsRebuild?: boolean; verbose?: boolean },
 ): Promise<number> {
-  const labelFiles = await discoverLabelFiles(modelDir);
+  const labelFiles = await discoverLabelFiles(modelDir, opts?.verbose);
   if (labelFiles.length === 0) return 0;
 
   const allEntries: Parameters<XppSymbolIndex['bulkAddLabels']>[0] = [];
@@ -209,29 +213,69 @@ export async function indexAllLabels(
     // junction points, which readdirSync reports as isSymbolicLink()=true
     // rather than isDirectory()=true.
     models = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name);
+    console.log(`   🔍 Found ${models.length} potential model folders in ${packagesPath}`);
   } catch {
     console.error(`[LabelParser] Cannot read packages path: ${packagesPath}`);
     return { totalLabels, modelsIndexed };
   }
 
-  for (const model of models) {
-    if (modelFilter && !modelFilter(model)) continue;
+  let skippedByFilter = 0;
+  let skippedMissingDir = 0;
+  let skippedNoLabels = 0;
+  const verboseDebug = process.env.DEBUG_LABELS === 'true';
+  let processedModels = 0;
 
-    // The inner model source dir has the same name as the outer package dir
-    const modelDir = path.join(packagesPath, model, model);
-    if (!fsSync.existsSync(modelDir)) continue;
+  for (const model of models) {
+    if (modelFilter && !modelFilter(model)) {
+      skippedByFilter++;
+      continue;
+    }
+
+    // Try two possible structures:
+    // 1. Standard structure: {packagesPath}/{Model}/{Model}/AxLabelFile (PackagesLocalDirectory from AOT)
+    // 2. Git source structure: {packagesPath}/{Model}/AxLabelFile (Git repository)
+    let modelDir = path.join(packagesPath, model, model);
+    if (!fsSync.existsSync(modelDir)) {
+      // Try flat structure (Git source)
+      modelDir = path.join(packagesPath, model);
+      if (!fsSync.existsSync(modelDir)) {
+        skippedMissingDir++;
+        continue;
+      }
+    }
+
+    processedModels++;
+    // Enable verbose for first 3 models or when DEBUG_LABELS=true
+    const enableVerbose = verboseDebug || processedModels <= 3;
 
     // Skip per-model FTS rebuild; do a single rebuild after all models are indexed
-    const count = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true });
+    const count = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true, verbose: enableVerbose });
     if (count > 0) {
       totalLabels += count;
       modelsIndexed++;
+      if (enableVerbose) {
+        console.log(`      ✓ ${model}: ${count} labels`);
+      }
+    } else {
+      skippedNoLabels++;
+      if (enableVerbose) {
+        console.log(`      ✗ ${model}: no labels found`);
+      }
     }
   }
 
   // Single FTS rebuild after all models — avoids O(N²) cost of rebuilding per model
   if (totalLabels > 0) {
     symbolIndex.rebuildLabelsFts();
+  }
+
+  // Debug statistics
+  if (modelsIndexed === 0) {
+    console.log(`   ℹ️  No labels indexed:`);
+    console.log(`      - Models skipped by filter: ${skippedByFilter}`);
+    console.log(`      - Models with missing directory: ${skippedMissingDir}`);
+    console.log(`      - Models with no labels: ${skippedNoLabels}`);
+    console.log(`      - Total models found: ${models.length}`);
   }
 
   return { totalLabels, modelsIndexed };

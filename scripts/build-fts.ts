@@ -92,7 +92,13 @@ async function buildFts(): Promise<void> {
       }
       // else: no filter — index all models
 
-      const { totalLabels, modelsIndexed } = await indexAllLabels(
+      const {
+        totalLabels,
+        modelsIndexed,
+        totalDurationMs,
+        avgDurationPerModelMs,
+        avgDurationPerLabelFileMs,
+      } = await indexAllLabels(
         symbolIndex,
         PACKAGES_PATH,
         labelModelFilter,
@@ -100,6 +106,9 @@ async function buildFts(): Promise<void> {
 
       const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
       console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+      console.log(`   ⏱️  Label indexing total duration: ${(totalDurationMs / 1000).toFixed(2)}s`);
+      console.log(`   ⏱️  Average duration per model: ${avgDurationPerModelMs.toFixed(1)}ms`);
+      console.log(`   ⏱️  Average duration per label file: ${avgDurationPerLabelFileMs.toFixed(1)}ms`);
 
       const labelCount = symbolIndex.getLabelCount();
       console.log(`   📊 Total labels in database: ${labelCount}`);

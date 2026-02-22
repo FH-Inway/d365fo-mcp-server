@@ -15,6 +15,7 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 import type { XppSymbolIndex } from './symbolIndex.js';
 
 export interface ParsedLabel {
@@ -154,11 +155,35 @@ export async function indexModelLabels(
   modelDir: string,
   model: string,
   opts?: { skipFtsRebuild?: boolean },
-): Promise<number> {
+): Promise<{ labelsIndexed: number; labelFilesDiscovered: number; labelFilesProcessed: number; durationMs: number }> {
+  const modelStart = Date.now();
   const labelFiles = await discoverLabelFiles(modelDir);
-  if (labelFiles.length === 0) return 0;
+  if (labelFiles.length === 0) {
+    const durationMs = Date.now() - modelStart;
+    return { labelsIndexed: 0, labelFilesDiscovered: 0, labelFilesProcessed: 0, durationMs };
+  }
 
   const allEntries: Parameters<XppSymbolIndex['bulkAddLabels']>[0] = [];
+  let labelFilesProcessed = 0;
+  const useLiveProgress = process.stdout.isTTY && process.env.CI !== 'true';
+
+  const renderFileProgress = (processed: number, total: number, labelsIndexed: number) => {
+    const percent = ((processed / total) * 100).toFixed(0);
+    const elapsed = ((Date.now() - modelStart) / 1000).toFixed(1);
+    const msg = `   📄 [${model}] ${processed}/${total} files (${percent}%) - ${labelsIndexed} labels (${elapsed}s)`;
+
+    if (useLiveProgress) {
+      readline.cursorTo(process.stdout, 0);
+      readline.clearLine(process.stdout, 0);
+      process.stdout.write(msg);
+      return;
+    }
+
+    // Fallback for non-TTY logs: periodic checkpoints to avoid log spam
+    if (processed === 1 || processed === total || processed % 50 === 0) {
+      console.log(msg);
+    }
+  };
 
   for (const { labelFileId, language, filePath } of labelFiles) {
     let content: string;
@@ -169,6 +194,7 @@ export async function indexModelLabels(
     }
 
     const labels = parseLabelFile(content, labelFileId, model, language, filePath);
+    labelFilesProcessed++;
     for (const lbl of labels) {
       allEntries.push({
         labelId: lbl.labelId,
@@ -180,13 +206,26 @@ export async function indexModelLabels(
         filePath: lbl.filePath,
       });
     }
+
+    renderFileProgress(labelFilesProcessed, labelFiles.length, allEntries.length);
+  }
+
+  if (useLiveProgress) {
+    process.stdout.write('\n');
   }
 
   if (allEntries.length > 0) {
     symbolIndex.bulkAddLabels(allEntries, opts);
   }
 
-  return allEntries.length;
+  const durationMs = Date.now() - modelStart;
+
+  return {
+    labelsIndexed: allEntries.length,
+    labelFilesDiscovered: labelFiles.length,
+    labelFilesProcessed,
+    durationMs,
+  };
 }
 
 /**
@@ -197,9 +236,19 @@ export async function indexAllLabels(
   symbolIndex: XppSymbolIndex,
   packagesPath: string,
   modelFilter?: (modelName: string) => boolean,
-): Promise<{ totalLabels: number; modelsIndexed: number }> {
+): Promise<{
+  totalLabels: number;
+  modelsIndexed: number;
+  totalDurationMs: number;
+  avgDurationPerModelMs: number;
+  avgDurationPerLabelFileMs: number;
+}> {
+  const totalStart = Date.now();
   let totalLabels = 0;
   let modelsIndexed = 0;
+  let modelsProcessed = 0;
+  let totalModelDurationMs = 0;
+  let totalLabelFilesProcessed = 0;
 
   let models: string[];
   try {
@@ -211,22 +260,44 @@ export async function indexAllLabels(
     models = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name);
   } catch {
     console.error(`[LabelParser] Cannot read packages path: ${packagesPath}`);
-    return { totalLabels, modelsIndexed };
+    return {
+      totalLabels,
+      modelsIndexed,
+      totalDurationMs: 0,
+      avgDurationPerModelMs: 0,
+      avgDurationPerLabelFileMs: 0,
+    };
   }
 
-  for (const model of models) {
-    if (modelFilter && !modelFilter(model)) continue;
+  const modelsToProcess = models.filter((model) => {
+    if (modelFilter && !modelFilter(model)) return false;
 
     // The inner model source dir has the same name as the outer package dir
     const modelDir = path.join(packagesPath, model, model);
-    if (!fsSync.existsSync(modelDir)) continue;
+    return fsSync.existsSync(modelDir);
+  });
+
+  console.log(`   📄 Indexing ${modelsToProcess.length} model(s)...`);
+
+  for (let modelIdx = 0; modelIdx < modelsToProcess.length; modelIdx++) {
+    const model = modelsToProcess[modelIdx];
+    const modelDir = path.join(packagesPath, model, model);
 
     // Skip per-model FTS rebuild; do a single rebuild after all models are indexed
-    const count = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true });
-    if (count > 0) {
-      totalLabels += count;
+    const modelStats = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true });
+    modelsProcessed++;
+    totalModelDurationMs += modelStats.durationMs;
+    totalLabelFilesProcessed += modelStats.labelFilesProcessed;
+
+    if (modelStats.labelsIndexed > 0) {
+      totalLabels += modelStats.labelsIndexed;
       modelsIndexed++;
     }
+
+    const progressPercent = ((modelIdx + 1) / modelsToProcess.length * 100).toFixed(0);
+    const modelDuration = (modelStats.durationMs / 1000).toFixed(1);
+    const elapsed = ((Date.now() - totalStart) / 1000).toFixed(0);
+    console.log(`   🏷️  [${progressPercent}%] ${model} - ${modelDuration}s (${elapsed}s total)`);
   }
 
   // Single FTS rebuild after all models — avoids O(N²) cost of rebuilding per model
@@ -234,5 +305,14 @@ export async function indexAllLabels(
     symbolIndex.rebuildLabelsFts();
   }
 
-  return { totalLabels, modelsIndexed };
+  const totalDurationMs = Date.now() - totalStart;
+  const avgDurationPerModelMs = modelsProcessed > 0 ? totalModelDurationMs / modelsProcessed : 0;
+  const avgDurationPerLabelFileMs = totalLabelFilesProcessed > 0 ? totalModelDurationMs / totalLabelFilesProcessed : 0;
+  const duration = (totalDurationMs / 1000).toFixed(1);
+
+  console.log(`   ✅ Indexed ${modelsProcessed} model(s) in ${duration}s`);
+  console.log(`   📊 Labels indexed: ${totalLabels} across ${modelsIndexed} model(s)`);
+  console.log(`   ⏱️  Averages: ${avgDurationPerModelMs.toFixed(1)}ms/model, ${avgDurationPerLabelFileMs.toFixed(1)}ms/label-file`);
+
+  return { totalLabels, modelsIndexed, totalDurationMs, avgDurationPerModelMs, avgDurationPerLabelFileMs };
 }

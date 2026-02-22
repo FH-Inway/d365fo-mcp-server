@@ -167,13 +167,22 @@ async function buildDatabase() {
       // For incremental builds, clear only the affected models' labels
       if (modelsToRebuild.length > 0) {
         symbolIndex.clearLabelsForModels(modelsToRebuild);
-        const { totalLabels, modelsIndexed } = await indexAllLabels(
+        const {
+          totalLabels,
+          modelsIndexed,
+          totalDurationMs,
+          avgDurationPerModelMs,
+          avgDurationPerLabelFileMs,
+        } = await indexAllLabels(
           symbolIndex,
           PACKAGES_PATH,
           (modelName) => modelsToRebuild.includes(modelName),
         );
         const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
         console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+        console.log(`   ⏱️  Label indexing total duration: ${(totalDurationMs / 1000).toFixed(2)}s`);
+        console.log(`   ⏱️  Average duration per model: ${avgDurationPerModelMs.toFixed(1)}ms`);
+        console.log(`   ⏱️  Average duration per label file: ${avgDurationPerLabelFileMs.toFixed(1)}ms`);
       } else {
         // Full rebuild — determine model filter based on EXTRACT_MODE
         let labelModelFilter: ((m: string) => boolean) | undefined;
@@ -184,13 +193,22 @@ async function buildDatabase() {
         }
         // else: no filter — index all models
 
-        const { totalLabels, modelsIndexed } = await indexAllLabels(
+        const {
+          totalLabels,
+          modelsIndexed,
+          totalDurationMs,
+          avgDurationPerModelMs,
+          avgDurationPerLabelFileMs,
+        } = await indexAllLabels(
           symbolIndex,
           PACKAGES_PATH,
           labelModelFilter,
         );
         const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
         console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+        console.log(`   ⏱️  Label indexing total duration: ${(totalDurationMs / 1000).toFixed(2)}s`);
+        console.log(`   ⏱️  Average duration per model: ${avgDurationPerModelMs.toFixed(1)}ms`);
+        console.log(`   ⏱️  Average duration per label file: ${avgDurationPerLabelFileMs.toFixed(1)}ms`);
       }
 
       const labelCount = symbolIndex.getLabelCount();

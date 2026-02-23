@@ -87,7 +87,17 @@ export async function discoverLabelFiles(
   verbose: boolean = false,
 ): Promise<Array<{ labelFileId: string; language: string; filePath: string }>> {
   const results: Array<{ labelFileId: string; language: string; filePath: string }> = [];
-  const axLabelDir = path.join(modelDir, 'AxLabelFile', 'LabelResources');
+  
+  // 🔧 CASE-INSENSITIVE: On Linux, unzip may convert directory names to lowercase.
+  // Try both cases: AxLabelFile (Windows) and axlabelfile (Linux unzip)
+  let axLabelDir = path.join(modelDir, 'AxLabelFile', 'LabelResources');
+  if (!fsSync.existsSync(axLabelDir)) {
+    axLabelDir = path.join(modelDir, 'axlabelfile', 'LabelResources');
+    if (!fsSync.existsSync(axLabelDir)) {
+      // Also try lowercase labelresources
+      axLabelDir = path.join(modelDir, 'axlabelfile', 'labelresources');
+    }
+  }
   
   // 🎯 OPTIMIZATION: Only index languages you actually use!
   // Reduces database from 20M rows to ~1M (20x smaller, 20x faster)
@@ -102,15 +112,44 @@ export async function discoverLabelFiles(
     locales = await fs.readdir(axLabelDir);
   } catch (err) {
     if (verbose) {
-      console.log(`      ℹ️  No AxLabelFile/LabelResources in ${modelDir}`);
+      // Check if parent AxLabelFile directory exists (try both cases)
+      const axLabelFileDirOriginal = path.join(modelDir, 'AxLabelFile');
+      const axLabelFileDirLower = path.join(modelDir, 'axlabelfile');
+      const axLabelExists = fsSync.existsSync(axLabelFileDirOriginal) || fsSync.existsSync(axLabelFileDirLower);
+      
+      if (!axLabelExists) {
+        console.log(`      ℹ️  No AxLabelFile/axlabelfile directory in ${modelDir}`);
+        
+        // Debug: show what directories actually exist
+        try {
+          const actualDirs = fsSync.readdirSync(modelDir).filter(n => {
+            const stat = fsSync.statSync(path.join(modelDir, n));
+            return stat.isDirectory();
+          }).slice(0, 5);
+          if (actualDirs.length > 0) {
+            console.log(`         Available dirs: ${actualDirs.join(', ')}`);
+          }
+        } catch { /* ignore */ }
+      } else {
+        const whichCase = fsSync.existsSync(axLabelFileDirOriginal) ? 'AxLabelFile' : 'axlabelfile';
+        console.log(`      ℹ️  Found ${whichCase} but no LabelResources subdirectory in ${modelDir}`);
+      }
     }
     return results; // No AxLabelFile folder
   }
 
   for (const locale of locales) {
+    // 🔧 CASE-INSENSITIVE locale matching: Linux unzip may convert en-US to en-us
     // Skip unsupported languages early (unless SUPPORTED_LANGUAGES is null = all languages)
-    if (SUPPORTED_LANGUAGES && !SUPPORTED_LANGUAGES.has(locale)) {
-      continue;
+    if (SUPPORTED_LANGUAGES) {
+      // Case-insensitive check
+      const normalizedLocale = locale.toLowerCase();
+      const isSupported = Array.from(SUPPORTED_LANGUAGES).some(
+        supported => supported.toLowerCase() === normalizedLocale
+      );
+      if (!isSupported) {
+        continue;
+      }
     }
     
     const localeDir = path.join(axLabelDir, locale);
@@ -124,19 +163,19 @@ export async function discoverLabelFiles(
     for (const file of files) {
       if (!file.endsWith('.label.txt')) continue;
       // Filename pattern: {LabelFileId}.{locale}.label.txt
-      // e.g. AslCore.en-US.label.txt
+      // e.g. AslCore.en-US.label.txt or aslcore.en-us.label.txt (Linux)
       const withoutSuffix = file.replace(/\.label\.txt$/, '');
       const dotIdx = withoutSuffix.lastIndexOf('.');
       if (dotIdx < 0) continue;
       const labelFileId = withoutSuffix.substring(0, dotIdx);
       const fileLang = withoutSuffix.substring(dotIdx + 1);
 
-      // Sanity-check: locale from directory should match lang in filename
-      if (fileLang !== locale) continue;
+      // Sanity-check: locale from directory should match lang in filename (case-insensitive)
+      if (fileLang.toLowerCase() !== locale.toLowerCase()) continue;
 
       results.push({
         labelFileId,
-        language: locale,
+        language: locale,  // Use actual locale from filesystem (may be en-us or en-US)
         filePath: path.join(localeDir, file),
       });
     }
@@ -235,6 +274,7 @@ export async function indexAllLabels(
     // 1. Standard structure: {packagesPath}/{Model}/{Model}/AxLabelFile (PackagesLocalDirectory from AOT)
     // 2. Git source structure: {packagesPath}/{Model}/AxLabelFile (Git repository)
     let modelDir = path.join(packagesPath, model, model);
+    let usedNestedStructure = false;
     if (!fsSync.existsSync(modelDir)) {
       // Try flat structure (Git source)
       modelDir = path.join(packagesPath, model);
@@ -242,11 +282,25 @@ export async function indexAllLabels(
         skippedMissingDir++;
         continue;
       }
+    } else {
+      usedNestedStructure = true;
     }
 
     processedModels++;
     // Enable verbose for first 3 models or when DEBUG_LABELS=true
     const enableVerbose = verboseDebug || processedModels <= 3;
+    
+    if (enableVerbose && processedModels === 1) {
+      console.log(`   📁 Using ${usedNestedStructure ? 'nested' : 'flat'} structure`);
+      // Show which case was detected
+      const axLabelOriginal = path.join(modelDir, 'AxLabelFile');
+      const axLabelLower = path.join(modelDir, 'axlabelfile');
+      if (fsSync.existsSync(axLabelOriginal)) {
+        console.log(`   📁 Case: Windows (AxLabelFile with capital letters)`);
+      } else if (fsSync.existsSync(axLabelLower)) {
+        console.log(`   📁 Case: Linux (axlabelfile lowercase) - using case-insensitive matching`);
+      }
+    }
 
     // Skip per-model FTS rebuild; do a single rebuild after all models are indexed
     const count = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true, verbose: enableVerbose });

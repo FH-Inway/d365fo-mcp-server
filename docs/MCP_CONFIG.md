@@ -31,7 +31,7 @@ That is all most users need. The server will:
 
 ## All Configuration Options
 
-### Traditional (on-prem VM)
+### Traditional
 
 ```json
 {

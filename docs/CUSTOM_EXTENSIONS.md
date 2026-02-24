@@ -4,7 +4,7 @@ This guide explains how to extract and index custom X++ extensions/ISV models.
 
 ## Configuration
 
-### Traditional (on-prem VM)
+### Traditional
 
 Add to your `.env` file:
 

@@ -57,7 +57,7 @@ Key settings in `.env`:
 # Environment type: auto (default), traditional, ude
 DEV_ENVIRONMENT_TYPE=auto
 
-# --- Traditional (on-prem VM) ---
+# --- Traditional ---
 PACKAGES_PATH=C:/AosService/PackagesLocalDirectory
 CUSTOM_MODELS=YourModel1,YourModel2
 

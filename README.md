@@ -22,7 +22,7 @@ An MCP server that gives GitHub Copilot access to your D365 F&O codebase — 584
 │  (Agent Mode)       │                 │                                  │
 │                     │                 │  ┌─────────┐   ┌──────────────┐ │
 │  "Show methods of   │                 │  │ Symbols │   │ Labels       │ │
-│   SalesTable"       │                 │  │  ~1 GB  │   │  ~500 MB     │ │
+│   SalesTable"       │                 │  │  ~1 GB  │   │  ~8 GB       │ │
 │                     │                 │  │ 584K+   │   │ 19M+ labels  │ │
 │  ← answer in 50ms   │                 │  │ symbols │   │ 70 languages │ │
 └─────────────────────┘                 │  └─────────┘   └──────────────┘ │
@@ -104,7 +104,14 @@ Copy-Item -Path ".github" -Destination "C:\Path\To\YourSolution\" -Recurse
 | `Is my class MyHelper missing any standard methods?` | Class completeness analysis |
 | `Create a batch job for order processing` | Complete batch job template |
 
-### 🏷️ Label Management
+### � Smart Object Generation
+| Prompt | What happens |
+|--------|-------------|
+| `Generate a transaction table with common fields` | AI-driven table with intelligent field/index suggestions |
+| `Create a SimpleList form for MyOrderTable` | AI-driven form with datasource and grid controls |
+| `What EDT should I use for CustomerAccount field?` | Suggests EDTs using fuzzy matching and pattern analysis |
+
+### �🏷️ Label Management
 | Prompt | What happens |
 |--------|-------------|
 | `Find a label for "customer"` | Searches all AxLabelFile objects |

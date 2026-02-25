@@ -53,7 +53,19 @@ export const generateSmartTableTool: Tool = {
   },
       fieldsHint: {
         type: 'string',
-        description: 'Optional: Comma-separated field hints (e.g., "RecId, Name, Amount, Customer"). Tool will suggest EDTs.',
+        description:
+          'REQUIRED when the user mentions any fields, columns, or data. ' +
+          'Extract ALL field names from the user description and pass them here as a comma-separated list. ' +
+          'WITHOUT this parameter only generic default fields are generated and the table will be INCOMPLETE. ' +
+          'Natural language → fieldsHint mapping examples: ' +
+          '"Account number" → "AccountNum", ' +
+          '"Name" → "Name", ' +
+          '"Description" or "popis" → "Description", ' +
+          '"platnost od" or "ValidFrom" or "from date" → "ValidFrom", ' +
+          '"platnost do" or "ValidTo" or "to date" → "ValidTo", ' +
+          '"active" or "active flag" → "Active", ' +
+          '"customer" or "customer account" → "CustAccount". ' +
+          'Example call: fieldsHint="AccountNum, Name, Description, ValidFrom, ValidTo"',
       },
       generateCommonFields: {
         type: 'boolean',
@@ -75,10 +87,11 @@ export const generateSmartTableTool: Tool = {
         type: 'array',
         items: { type: 'string' },
         description:
-          'Standard method names to generate and embed directly in the table XML. ' +
+          'ALWAYS pass ["find", "exist"] when the user asks for those methods. ' +
+          'Methods are embedded directly in the generated XML. ' +
           'Supported values: "find", "exist". ' +
-          'ALWAYS use this instead of calling modify_d365fo_file after table generation — ' +
-          'on Azure/Linux modify_d365fo_file cannot write files.',
+          '⛔ NEVER omit this and then call modify_d365fo_file to add methods afterwards — ' +
+          'modify_d365fo_file CANNOT write files on Azure/Linux.',
       },
     },
     required: ['name'],
@@ -108,6 +121,7 @@ export async function handleGenerateSmartTable(
   let fields: TableFieldSpec[] = [];
   let indexes: TableIndexSpec[] = [];
   let relations: TableRelationSpec[] = [];
+  let usedFallback = false; // true when fieldsHint was missing and generic defaults were used
 
   // Strategy 1: Copy from existing table
   if (copyFrom) {
@@ -239,7 +253,8 @@ export async function handleGenerateSmartTable(
 
   // Fallback: Generate sensible defaults when no fields were provided at all
   if (fields.length === 0) {
-    console.warn(`[generateSmartTable] No fieldsHint provided — generating default fields. Pass fieldsHint for accurate results.`);
+    usedFallback = true;
+    console.warn(`[generateSmartTable] No fieldsHint provided — generating GENERIC defaults only. The table will be incomplete!`);
     const nameLower = name.toLowerCase();
     // Derive reasonable defaults from table name and group
     if (nameLower.includes('account') || tableGroup === 'Main') {
@@ -401,6 +416,26 @@ export async function handleGenerateSmartTable(
     }
   }
 
+  // Build incomplete-table warning for when no fieldsHint was provided
+  const incompleteWarning = usedFallback
+    ? [
+        ``,
+        `⚠️ **INCOMPLETE TABLE — \`fieldsHint\` was NOT provided!**`,
+        `Generic default fields were used instead of the user's actual fields.`,
+        ``,
+        `🔄 **YOU MUST REGENERATE** — call \`generate_smart_table\` AGAIN with correct parameters:`,
+        `\`\`\``,
+        `generate_smart_table(`,
+        `  name="${name}",              ← base name WITHOUT model prefix`,
+        `  fieldsHint="Field1, Field2, Field3",  ← extract ALL fields from the user's description`,
+        `  methods=["find", "exist"],   ← include if user requested these`,
+        `)`,
+        `\`\`\``,
+        `⛔ **NEVER** call \`modify_d365fo_file\` to add missing fields — it CANNOT write on Azure/Linux.`,
+        `⛔ **NEVER** call \`create_d365fo_file\` with this incomplete XML — REGENERATE first.`,
+      ].join('\n')
+    : '';
+
   // Generate XML
   const xml = builder.buildTableXml({
     name: finalName,
@@ -440,6 +475,7 @@ export async function handleGenerateSmartTable(
           `✅ Table XML generated for **${finalName}**` + (resolvedModel ? ` (model: ${resolvedModel})` : ''),
           `   Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
           noModelNote,
+          incompleteWarning,
           ``,
           `ℹ️  MCP server is running on Azure/Linux — file writing is handled by the local Windows companion. This is the expected hybrid workflow.`,
           nextStep,

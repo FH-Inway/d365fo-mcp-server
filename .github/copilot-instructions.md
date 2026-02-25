@@ -68,6 +68,27 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
    - Only call `create_label()` when no suitable label is found
    - **NEVER edit .label.txt files directly** — use `create_label()` which inserts alphabetically and updates the index
 
+11. **ALWAYS pass `fieldsHint` when user describes table fields**
+   - Extract ALL field names from the user's natural language description before calling `generate_smart_table`
+   - WITHOUT `fieldsHint` the tool generates ONLY generic defaults → table will be INCOMPLETE
+   - Czech/natural language mapping:
+     - "Account number" / "účet" → `AccountNum`
+     - "Name" / "název" → `Name`
+     - "Description" / "popis" → `Description`
+     - "platnost od" / "from date" / "ValidFrom" → `ValidFrom`
+     - "platnost do" / "to date" / "ValidTo" → `ValidTo`
+     - "active" / "flag" → `Active`
+   - Example: user says *"primárním klíčem Account number a Name, přidej popis a platnost od-do, metody find a exist"*
+     ```
+     generate_smart_table(
+       name="MyTable",
+       fieldsHint="AccountNum, Name, Description, ValidFrom, ValidTo",
+       methods=["find", "exist"]
+     )
+     ```
+   - **NEVER call `modify_d365fo_file` to add missing fields** — it CANNOT write files on Azure/Linux
+   - If the response says **⚠️ INCOMPLETE TABLE**, call `generate_smart_table` AGAIN with proper `fieldsHint` — do NOT proceed to `create_d365fo_file` with incomplete XML
+
 ## Available MCP Tools
 
 ### 🔍 Search and Discovery (8 tools)
@@ -456,6 +477,9 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 - Don't use vague search terms — be specific about what you're looking for
 - Don't call `search()` after you already have the complete object from `get_class_info()`
 - **Never edit .label.txt files with `edit_file` or `replace_string_in_file`** — use `create_label()` which maintains sort order and updates the index
+- **Never call `create_d365fo_file` with incomplete XML** — if `generate_smart_table` response shows ⚠️ INCOMPLETE TABLE, REGENERATE with `fieldsHint` first
+- **Never omit `fieldsHint`** when user describes fields — extract them from natural language and pass explicitly; without them the table is empty
+- **Never omit `methods=["find","exist"]`** when user asks for those methods — pass in `generate_smart_table`, not via `modify_d365fo_file`
 - Never create a label without first calling `search_labels()` — duplicate labels waste translation effort
 - **Never manually specify EDT types like "String", "Int"** — call `suggest_edt()` to find correct Extended Data Type
 - **Never create tables/forms without analyzing patterns first** — use `get_table_patterns()`/`get_form_patterns()` to learn from existing code

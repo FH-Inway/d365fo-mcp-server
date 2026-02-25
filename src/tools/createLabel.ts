@@ -21,6 +21,9 @@ import * as path from 'path';
 import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 
+// UTF-8 BOM (Byte Order Mark)
+const UTF8_BOM = '\uFEFF';
+
 // ── Input schema ─────────────────────────────────────────────────────────────
 
 const TranslationSchema = z.object({
@@ -34,14 +37,14 @@ const CreateLabelArgsSchema = z.object({
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Label ID must be alphanumeric (no spaces)')
     .describe(
-      'Label identifier — must be unique within the label file, e.g. MyNewField or AslMyFeature',
+      'Label identifier — must be unique within the label file, e.g. MyNewField or MyFeature',
     ),
   labelFileId: z
     .string()
-    .describe('Label file ID to add the label to (e.g. AslCore). Must exist in the model.'),
+    .describe('Label file ID to add the label to (e.g. MyModel). Must exist in the model.'),
   model: z
     .string()
-    .describe('Model name that owns the label file (e.g. AslCore, MyExtensions)'),
+    .describe('Model name that owns the label file (e.g. MyModel, MyExtensions)'),
   packageName: z
     .string()
     .optional()
@@ -109,7 +112,7 @@ function parseLabelMap(content: string): Map<string, { text: string; comment?: s
   return map;
 }
 
-/** Render a label map back to .label.txt content (alphabetically sorted) */
+/** Render a label map back to .label.txt content (alphabetically sorted) with UTF-8 BOM */
 function serializeLabelMap(map: Map<string, { text: string; comment?: string }>): string {
   const sorted = [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
   const lines: string[] = [];
@@ -117,8 +120,15 @@ function serializeLabelMap(map: Map<string, { text: string; comment?: string }>)
     lines.push(`${id}=${text}`);
     if (comment) lines.push(` ;${comment}`);
   }
-  // End with a newline
-  return lines.join('\n') + '\n';
+  // End with a newline, prepend UTF-8 BOM for D365FO compatibility
+  return UTF8_BOM + lines.join('\n') + '\n';
+}
+
+/** Write file with UTF-8 BOM signature */
+async function writeFileWithBom(filePath: string, content: string): Promise<void> {
+  // Ensure content starts with BOM
+  const contentWithBom = content.startsWith(UTF8_BOM) ? content : UTF8_BOM + content;
+  await fs.writeFile(filePath, contentWithBom, 'utf-8');
 }
 
 /** XML descriptor content for a new AxLabelFile locale */
@@ -233,9 +243,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         const langDir = path.join(labelResourcesDir, lang);
         await fs.mkdir(langDir, { recursive: true });
 
-        // Create the empty .label.txt (will be written below)
+        // Create the empty .label.txt with UTF-8 BOM (will be written below)
         const txtPath = path.join(langDir, `${labelFileId}.${lang}.label.txt`);
-        try { await fs.access(txtPath); } catch { await fs.writeFile(txtPath, '', 'utf-8'); }
+        try { await fs.access(txtPath); } catch { await writeFileWithBom(txtPath, ''); }
 
         // Create XML descriptor
         const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
@@ -278,9 +288,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Ensure the directory exists
       await fs.mkdir(langDir, { recursive: true });
 
-      // Write updated file
+      // Write updated file with UTF-8 BOM
       const newContent = serializeLabelMap(labelMap);
-      await fs.writeFile(txtPath, newContent, 'utf-8');
+      await writeFileWithBom(txtPath, newContent);
       written.push(lang);
 
       // Prepare index update
@@ -373,11 +383,11 @@ export const createLabelToolDefinition = {
       },
       labelFileId: {
         type: 'string',
-        description: 'Label file ID that the label belongs to (e.g. AslCore)',
+        description: 'Label file ID that the label belongs to (e.g. MyModel)',
       },
       model: {
         type: 'string',
-        description: 'Model name (e.g. AslCore, MyExtensions)',
+        description: 'Model name (e.g. MyModel, MyExtensions)',
       },
       translations: {
         type: 'array',

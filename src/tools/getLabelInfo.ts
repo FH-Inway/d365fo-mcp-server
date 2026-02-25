@@ -13,14 +13,14 @@ const GetLabelInfoArgsSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Exact label ID to look up (e.g. ACFeature, BatchGroup). ' +
+      'Exact label ID to look up (e.g. MyFeature, BatchGroup). ' +
         'Omit to list available label files for the model instead.',
     ),
   labelFileId: z
     .string()
     .optional()
-    .describe('Label file ID (e.g. AslCore, SYS, ApplicationPlatform)'),
-  model: z.string().optional().describe('Model to filter by (e.g. AslCore)'),
+    .describe('Label file ID (e.g. MyModel, SYS, ApplicationPlatform)'),
+  model: z.string().optional().describe('Model to filter by (e.g. MyModel)'),
 });
 
 export async function getLabelInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -137,15 +137,15 @@ export const getLabelInfoToolDefinition = {
       labelId: {
         type: 'string',
         description:
-          'Exact label ID (e.g. ACFeature). Omit to list available label files.',
+          'Exact label ID (e.g. MyFeature). Omit to list available label files.',
       },
       labelFileId: {
         type: 'string',
-        description: 'Label file ID (e.g. AslCore, SYS)',
+        description: 'Label file ID (e.g. MyModel, SYS)',
       },
       model: {
         type: 'string',
-        description: 'Model to filter by (e.g. AslCore)',
+        description: 'Model to filter by (e.g. MyModel)',
       },
     },
     required: [],

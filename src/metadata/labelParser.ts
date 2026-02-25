@@ -83,7 +83,7 @@ export function parseLabelFile(
  * Returns an array of { labelFileId, language, filePath }.
  */
 export async function discoverLabelFiles(
-  modelDir: string,  // e.g. K:\AosService\PackagesLocalDirectory\AslCore\AslCore
+  modelDir: string,  // e.g. K:\AosService\PackagesLocalDirectory\MyPackage\MyModel
   verbose: boolean = false,
 ): Promise<Array<{ labelFileId: string; language: string; filePath: string }>> {
   const results: Array<{ labelFileId: string; language: string; filePath: string }> = [];
@@ -163,7 +163,7 @@ export async function discoverLabelFiles(
     for (const file of files) {
       if (!file.endsWith('.label.txt')) continue;
       // Filename pattern: {LabelFileId}.{locale}.label.txt
-      // e.g. AslCore.en-US.label.txt or aslcore.en-us.label.txt (Linux)
+      // e.g. MyModel.en-US.label.txt or mymodel.en-us.label.txt (Linux)
       const withoutSuffix = file.replace(/\.label\.txt$/, '');
       const dotIdx = withoutSuffix.lastIndexOf('.');
       if (dotIdx < 0) continue;

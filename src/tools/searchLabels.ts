@@ -17,7 +17,7 @@ const SearchLabelsArgsSchema = z.object({
   query: z
     .string()
     .describe(
-      'Search text — searches label ID, label text and comments (e.g. "customer name", "ACFeature", "batch")',
+      'Search text — searches label ID, label text and comments (e.g. "customer name", "MyFeature", "batch")',
     ),
   language: z
     .string()
@@ -27,11 +27,11 @@ const SearchLabelsArgsSchema = z.object({
   model: z
     .string()
     .optional()
-    .describe('Restrict results to a specific model (e.g. AslCore, ApplicationPlatform)'),
+    .describe('Restrict results to a specific model (e.g. MyModel, ApplicationPlatform)'),
   labelFileId: z
     .string()
     .optional()
-    .describe('Restrict results to a specific label file ID (e.g. AslCore, SYS)'),
+    .describe('Restrict results to a specific label file ID (e.g. MyModel, SYS)'),
   limit: z.number().optional().default(30).describe('Maximum number of results (default 30)'),
 });
 
@@ -124,11 +124,11 @@ export const searchLabelsToolDefinition = {
       },
       model: {
         type: 'string',
-        description: 'Restrict to a specific model (e.g. AslCore)',
+        description: 'Restrict to a specific model (e.g. MyModel)',
       },
       labelFileId: {
         type: 'string',
-        description: 'Restrict to a specific label file ID (e.g. AslCore, SYS)',
+        description: 'Restrict to a specific label file ID (e.g. MyModel, SYS)',
       },
       limit: {
         type: 'number',

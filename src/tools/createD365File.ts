@@ -958,7 +958,7 @@ export async function handleCreateD365File(
     }
 
     // Generate (or use provided) XML content
-    const xmlContent = args.xmlContent
+    let xmlContent = args.xmlContent
       ? args.xmlContent
       : XmlTemplateGenerator.generate(
           args.objectType,
@@ -966,6 +966,28 @@ export async function handleCreateD365File(
           args.sourceCode,
           args.properties
         );
+
+    // CRITICAL FIX: Replace unprefixed class/table names with prefixed finalObjectName
+    // When xmlContent or sourceCode contains `class MyClass` but finalObjectName is `MyPrefixMyClass`,
+    // the file would be named MyPrefixMyClass.xml but contain `class MyClass` — inconsistency!
+    if (finalObjectName !== args.objectName && (args.xmlContent || args.sourceCode)) {
+      // Pattern to match: `class OriginalName` or `public class OriginalName`
+      const classPattern = new RegExp(
+        `\\b(public\\s+|private\\s+|protected\\s+|internal\\s+|final\\s+)?class\\s+${args.objectName}\\b`,
+        'g'
+      );
+      const replacedContent = xmlContent.replace(classPattern, (match) => {
+        return match.replace(args.objectName, finalObjectName);
+      });
+      
+      if (replacedContent !== xmlContent) {
+        console.error(
+          `[create_d365fo_file] ✅ Fixed class name inconsistency: ` +
+          `replaced \`class ${args.objectName}\` with \`class ${finalObjectName}\` in XML content`
+        );
+        xmlContent = replacedContent;
+      }
+    }
 
     // Debug: Log XML content length
     const xmlSource = args.xmlContent ? 'provided by caller' : 'generated from template';

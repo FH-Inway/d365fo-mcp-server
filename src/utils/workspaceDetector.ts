@@ -160,7 +160,7 @@ export async function autoDetectD365Project(
   }
 
   // Priority 4: Extract model name directly from a PackagesLocalDirectory path
-  // e.g. K:\AOSService\PackagesLocalDirectory\AslEnhancedDataSharing → modelName: "AslEnhancedDataSharing"
+  // e.g. K:\AOSService\PackagesLocalDirectory\MyEnhancedDataSharing → modelName: "MyEnhancedDataSharing"
   if (explicitWorkspacePath) {
     const normalized = path.normalize(explicitWorkspacePath);
 

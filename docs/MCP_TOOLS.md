@@ -69,8 +69,8 @@ just ask in plain English.
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **search_labels** | Full-text search across all AxLabelFile labels | "Find a label for 'customer account'" |
-| **get_label_info** | All translations for a label ID, or list label files | "Show all translations of ACFeature in AslCore" |
-| **create_label** | Add a new label to all language files in a model | "Create label MyNewField in AslCore" |
+| **get_label_info** | All translations for a label ID, or list label files | "Show all translations of MyFeature in MyModel" |
+| **create_label** | Add a new label to all language files in a model | "Create label MyNewField in MyModel" |
 
 ---
 
@@ -115,7 +115,7 @@ avoid noise from the 500 000+ standard Microsoft symbols.
 ```
 Find all my ISV_ classes
 Show me custom extensions for CustTable
-Search for AslCore helper classes
+Search for MyModel helper classes
 ```
 
 ---
@@ -374,14 +374,14 @@ content, and developer comments simultaneously. Returns labels in ranked order w
 **Parameters:**
 - `query` — text to search for (required)
 - `language` — filter by locale, e.g. `en-US` (default: `en-US`)
-- `model` — restrict to one model, e.g. `AslCore`
+- `model` — restrict to one model, e.g. `MyModel`
 - `labelFileId` — restrict to one label file ID
 - `limit` — max results (default: 30)
 
 **Examples:**
 ```
 Find a label for the text "customer account"
-Search for labels about "batch" in the AslCore model
+Search for labels about "batch" in the MyModel model
 Find labels matching "vendor" in English
 ```
 
@@ -400,8 +400,8 @@ code snippets.
 
 **Examples:**
 ```
-What label files does the AslCore model have?
-Show me all translations of label ACFeature in AslCore
+What label files does the MyModel model have?
+Show me all translations of label MyFeature in MyModel
 Show me the X++ snippet for label BatchGroup
 ```
 
@@ -418,8 +418,8 @@ is immediately searchable.
 
 **Parameters:**
 - `labelId` — new label ID, e.g. `MyNewField` (required)
-- `labelFileId` — target label file, e.g. `AslCore` (required)
-- `model` — model name, e.g. `AslCore` (required)
+- `labelFileId` — target label file, e.g. `MyModel` (required)
+- `model` — model name, e.g. `MyModel` (required)
 - `translations` — array of `{ language, text }` objects (required); provide all supported
   languages
 - `defaultComment` — developer comment added to each translation
@@ -429,12 +429,12 @@ is immediately searchable.
 - `updateIndex` — immediately update the MCP index (default: `true`)
 
 **Label reference syntax after creation:**
-- In X++ code: `literalStr("@AslCore:MyNewField")`
-- In metadata XML: `<Label>@AslCore:MyNewField</Label>`
+- In X++ code: `literalStr("@MyModel:MyNewField")`
+- In metadata XML: `<Label>@MyModel:MyNewField</Label>`
 
 **Examples:**
 ```
-Create label MyNewField in the AslCore model with translations for en-US, cs, de, and sk
+Create label MyNewField in the MyModel model with translations for en-US, cs, de, and sk
 Add a new label CustomerAccountNumber with English text "Customer account number"
 ```
 

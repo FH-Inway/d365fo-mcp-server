@@ -424,7 +424,7 @@ erDiagram
     LABELS {
         integer id PK
         text label_id "Label ID (e.g., MyLabel)"
-        text label_file_id "File ID (e.g., AslCore)"
+        text label_file_id "File ID (e.g., MyModel)"
         text model "Model name"
         text language "Language code (en-US, cs, sk, de)"
         text text "Translated text"

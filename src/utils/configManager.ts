@@ -235,7 +235,7 @@ class ConfigManager {
       const normalized = path.normalize(context.workspacePath);
       
       // If workspacePath points to a specific model, extract base path
-      // Example: K:\AOSService\PackagesLocalDirectory\AslCore
+      // Example: K:\AOSService\PackagesLocalDirectory\MyPackage
       // Should return: K:\AOSService\PackagesLocalDirectory
       const match = normalized.match(/^(.+[\\\/]PackagesLocalDirectory)(?:[\\\/]|$)/i);
       if (match) {
@@ -264,7 +264,7 @@ class ConfigManager {
 
   /**
    * Get model name from the last segment of workspacePath.
-   * workspacePath like K:\AOSService\PackagesLocalDirectory\AslCore → "AslCore"
+   * workspacePath like K:\AOSService\PackagesLocalDirectory\MyPackage → "MyPackage"
    * This allows automatic model detection on non-Windows (Azure) without D365FO_MODEL_NAME env var.
    * Note: package name usually equals model name, but not always.
    */

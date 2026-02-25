@@ -18,6 +18,39 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 | `create_file` | `create_d365fo_file()` with optional `generate_d365fo_xml()` first | D365FO files require specific XML schema and AOT structure |
 | `apply_patch` | `modify_d365fo_file()` | Patches on XML corrupt metadata; use structured operations instead |
 
+### Code Analysis, Review, and Audit — ALWAYS Use MCP Tools
+
+When analyzing D365FO code, performing code reviews, audits, or investigating issues, **you MUST use MCP tools instead of built-in tools**. Built-in tools like `code_search`, `grep_search`, and `semantic_search` work on plain text and cannot understand D365FO's XML metadata structure.
+
+**For analyzing D365FO code, use these MCP tools:**
+
+| Task | MCP Tool | Why Built-in Tools Fail |
+|------|----------|------------------------|
+| Find where a class/method is used | `find_references(targetName, targetType?)` | `code_search` searches text, not X++ call graphs |
+| Analyze implementation patterns | `analyze_code_patterns(scenario)` | `semantic_search` doesn't understand D365FO frameworks |
+| Check API usage examples | `get_api_usage_patterns(apiName)` | `code_search` can't find initialization sequences |
+| Verify class completeness | `analyze_class_completeness(className)` | Built-in tools can't detect missing standard methods |
+| Review method implementations | `suggest_method_implementation(className, methodName)` | `code_search` returns raw XML, not parsed X++ |
+| Inspect full class structure | `get_class_info(className)` | `get_file` returns unparsed XML, not methods with signatures |
+| Inspect table schema | `get_table_info(tableName)` | `get_file` doesn't extract fields, indexes, and relations |
+| Analyze form datasources | `get_form_info(formName)` | `grep_search` can't parse nested XML hierarchy |
+| Find similar tables/forms | `get_table_patterns()`, `get_form_patterns()` | Built-in tools can't compare D365FO patterns |
+
+**Example: Code Review Workflow**
+```
+User: "Review the SalesTableType class and check if it follows best practices"
+
+❌ WRONG approach:
+1. code_search("SalesTableType")  → Returns malformed XML or nothing
+2. get_file("SalesTableType.xml")  → Returns unparsable XML metadata
+
+✅ CORRECT approach:
+1. get_class_info("SalesTableType")  → Returns all methods with source code
+2. analyze_class_completeness("SalesTableType")  → Checks for missing standard methods
+3. find_references("SalesTableType")  → Shows where the class is used
+4. get_api_usage_patterns("SalesTableType")  → Shows typical usage patterns
+```
+
 ### Non-Negotiable Rules
 
 1. **NEVER call `get_file`, `read_file`, or `code_search`** on D365FO files (.xml, .xpp)
@@ -470,6 +503,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 
 ### ✅ DO:
 - Use MCP tools for ALL D365FO metadata operations
+- **Use MCP tools for code analysis, review, and audit** — `find_references()`, `analyze_code_patterns()`, `get_api_usage_patterns()`, `analyze_class_completeness()`
 - Call `get_method_signature()` before creating CoC extensions
 - Call `analyze_code_patterns()` before generating new code
 - Use `batch_search()` when you need multiple objects
@@ -486,6 +520,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 
 ### ❌ DON'T:
 - Never use built-in file tools (`get_file`, `edit_file`, etc.) on .xml or .xpp files
+- **Never use built-in analysis tools (`code_search`, `grep_search`, `semantic_search`) for D365FO code** — they cannot parse XML metadata; use MCP tools instead
 - Never guess method signatures — always look them up
 - Never use `replace_string_in_file` on D365FO XML — it corrupts metadata
 - **Never create D365FO files with generic `create_file` — ONLY use `create_d365fo_file()`**
@@ -513,5 +548,8 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 2. **Format**: D365FO metadata is complex XML not parseable by generic tools
 3. **Location**: Objects are not in workspace — they're in external AOT/PackagesLocalDirectory
 4. **Performance**: Pre-indexed database provides instant results
+5. **Safety**: Built-in validation, backup, and rollback for modifications
+6. **Context**: Tools understand X++ language semantics, inheritance, and D365FO patterns
+7. **Analysis**: Tools provide call graphs, usage patterns, and completeness checks that built-in tools cannot perform
 5. **Safety**: Built-in validation, backup, and rollback for modifications
 6. **Context**: Tools understand X++ language semantics, inheritance, and D365FO patterns

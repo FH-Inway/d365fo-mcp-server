@@ -946,8 +946,8 @@ Use WHEN:
 - Searching for labels by keyword (e.g. "customer", "batch", "error")
 
 Examples:
-- search_labels("batch group") → finds ACFeature, BatchGroup, etc.
-- search_labels("ACFeature", model="AslCore") → labels in custom AslCore model
+- search_labels("batch group") → finds MyFeature, BatchGroup, etc.
+- search_labels("MyFeature", model="MyModel") → labels in custom MyModel model
 - search_labels("feature", language="cs") → Czech translations`,
           inputSchema: {
             type: 'object',
@@ -962,11 +962,11 @@ Examples:
               },
               model: {
                 type: 'string',
-                description: 'Restrict to a specific model (e.g. AslCore, ApplicationPlatform)',
+                description: 'Restrict to a specific model (e.g. MyModel, ApplicationPlatform)',
               },
               labelFileId: {
                 type: 'string',
-                description: 'Restrict to a specific label file ID (e.g. AslCore, SYS)',
+                description: 'Restrict to a specific label file ID (e.g. MyModel, SYS)',
               },
               limit: {
                 type: 'number',
@@ -992,23 +992,23 @@ Use WHEN:
 - Listing which label files exist in a custom model (omit labelId)
 
 Examples:
-- get_label_info("ACFeature", model="AslCore") → all translations
-- get_label_info(model="AslCore") → list label files in AslCore
+- get_label_info("MyFeature", model="MyModel") → all translations
+- get_label_info(model="MyModel") → list label files in MyModel
 - get_label_info("BatchGroup") → all languages for BatchGroup`,
           inputSchema: {
             type: 'object',
             properties: {
               labelId: {
                 type: 'string',
-                description: 'Exact label ID (e.g. ACFeature). Omit to list available label files.',
+                description: 'Exact label ID (e.g. MyFeature). Omit to list available label files.',
               },
               labelFileId: {
                 type: 'string',
-                description: 'Label file ID (e.g. AslCore, SYS)',
+                description: 'Label file ID (e.g. MyModel, SYS)',
               },
               model: {
                 type: 'string',
-                description: 'Model to filter by (e.g. AslCore)',
+                description: 'Model to filter by (e.g. MyModel)',
               },
             },
             required: [],
@@ -1030,7 +1030,7 @@ Process:
 5. Updates the SQLite label index
 
 Examples:
-- create_label("MyNewField", "AslCore", "AslCore", [{language:"en-US", text:"My new field"}, {language:"cs", text:"Moje nové pole"}])
+- create_label("MyNewField", "MyModel", "MyModel", [{language:"en-US", text:"My new field"}, {language:"cs", text:"Moje nové pole"}])
 - create_label with createLabelFileIfMissing=true → creates AxLabelFile structure from scratch`,
           inputSchema: {
             type: 'object',
@@ -1041,11 +1041,11 @@ Examples:
               },
               labelFileId: {
                 type: 'string',
-                description: 'Label file ID (e.g. AslCore)',
+                description: 'Label file ID (e.g. MyModel)',
               },
               model: {
                 type: 'string',
-                description: 'Model name that owns the label file (e.g. AslCore)',
+                description: 'Model name that owns the label file (e.g. MyModel)',
               },
               packageName: {
                 type: 'string',

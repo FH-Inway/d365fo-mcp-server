@@ -99,6 +99,13 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
      - User: "primary key Account number" → `primaryKeyFields` can be omitted (auto-detected)
      - User: "primary key Account number and Name" → `primaryKeyFields=["AccountNum", "Name"]`
 
+13. **Class/table name MUST match between file name and declaration**
+   - When `create_d365fo_file(objectName="MyClass", ...)` is called with prefix applied → file becomes `MyPrefixMyClass.xml`
+   - The class declaration inside MUST also be `class MyPrefixMyClass` — **NOT** `class MyClass`
+   - `create_d365fo_file` automatically fixes this inconsistency (replaces unprefixed names with prefixed ones)
+   - **Rule:** If file is `MyPrefixMyClass.xml`, the X++ declaration must be `public class MyPrefixMyClass extends ...`
+   - **Never create:** file `MyPrefixMyClass.xml` containing `class MyClass` — this breaks AOT synchronization
+
 ## Available MCP Tools
 
 ### 🔍 Search and Discovery (8 tools)
@@ -118,9 +125,9 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 
 | Tool | Description | Example Usage |
 |------|-------------|---------------|
-| `search_labels(query, language?, model?, labelFileId?)` | Full-text search across all indexed AxLabelFile labels. Searches by ID, text and comment. Returns `@LabelFileId:LabelId` reference syntax. **Call this FIRST before create_label!** | `search_labels("customer name", model="AslCore")` |
-| `get_label_info(labelId?, labelFileId?, model?)` | Get all language translations for a label ID, or list available AxLabelFile IDs in a model. Shows ready-to-use X++ and XML snippets. | `get_label_info("ACFeature", model="AslCore")` |
-| `create_label(labelId, labelFileId, model, translations[])` | Add a new label to all language .label.txt files in a custom model. Inserts alphabetically. Optionally creates AxLabelFile structure from scratch. Updates the MCP index. | `create_label("MyField", "AslCore", "AslCore", [{language:"en-US", text:"My field"}, {language:"cs", text:"Moje pole"}])` |
+| `search_labels(query, language?, model?, labelFileId?)` | Full-text search across all indexed AxLabelFile labels. Searches by ID, text and comment. Returns `@LabelFileId:LabelId` reference syntax. **Call this FIRST before create_label!** | `search_labels("customer name", model="MyModel")` |
+| `get_label_info(labelId?, labelFileId?, model?)` | Get all language translations for a label ID, or list available AxLabelFile IDs in a model. Shows ready-to-use X++ and XML snippets. | `get_label_info("MyFeature", model="MyModel")` |
+| `create_label(labelId, labelFileId, model, translations[])` | Add a new label to all language .label.txt files in a custom model. Inserts alphabetically. Optionally creates AxLabelFile structure from scratch. Updates the MCP index. | `create_label("MyField", "MyModel", "MyModel", [{language:"en-US", text:"My field"}, {language:"cs", text:"Moje pole"}])` |
 
 ### 📊 Advanced Object Information (5 tools)
 
@@ -202,8 +209,8 @@ create_d365fo_file(objectType="class", objectName="MySalesHelper",
   modelName="whatever",           ← ignored, auto-corrected
   projectPath="K:\VSProjects\MySolution\MyProject\MyProject.rnrproj",
   addToProject=true)
-→ Tool reads MyProject.rnrproj → extracts ModelName (e.g. "AslCore")
-→ File created at K:\AosService\PackagesLocalDirectory\AslCore\AslCore\AxClass\MySalesHelper.xml ✅
+→ Tool reads MyProject.rnrproj → extracts ModelName (e.g. "MyModel")
+→ File created at K:\AosService\PackagesLocalDirectory\MyPackage\MyModel\AxClass\MySalesHelper.xml ✅
 → Added to MyProject.rnrproj ✅
 ```
 
@@ -362,11 +369,11 @@ Step 1: generate_smart_table(
 
 Step 2: create_d365fo_file(           ← IMMEDIATELY after step 1, no intermediate steps
           objectType="table",
-          objectName="AslMyOrderTable",   ← use the prefixed name from step 1 response
+          objectName="MyOrderTable",   ← use the prefixed name from step 1 response
           xmlContent="<full XML from step 1>",
           addToProject=true
         )
-     → Writes file to K:\AosService\PackagesLocalDirectory\AslCore\AslCore\AxTable\...
+     → Writes file to K:\AosService\PackagesLocalDirectory\MyPackage\MyModel\AxTable\...
      → Adds entry to .rnrproj for VS2022
 
 ⛔ FORBIDDEN alternatives when generate_smart_table returns XML text:
@@ -384,19 +391,19 @@ Same pattern applies for generate_smart_form + create_d365fo_file(objectType="fo
 ```
 Step 1: search_labels("your text", language="en-US")
      → Returns matching labels with @LabelFileId:LabelId syntax
-Step 2: get_label_info("ACFeature", model="AslCore")
+Step 2: get_label_info("MyFeature", model="MyModel")
      → Verify all required languages are present
-Step 3: Use @AslCore:ACFeature in X++ code or metadata XML
+Step 3: Use @MyModel:MyFeature in X++ code or metadata XML
 ```
 
 **Workflow for creating a new label:**
 ```
 Step 1: search_labels("your text") — REQUIRED: check existing labels first!
-Step 2: get_label_info(model="AslCore") — list available label files in model
+Step 2: get_label_info(model="MyModel") — list available label files in model
 Step 3: create_label(
           labelId="MyNewField",
-          labelFileId="AslCore",
-          model="AslCore",
+          labelFileId="MyModel",
+          model="MyModel",
           translations=[
             {language:"en-US", text:"My new field"},
             {language:"cs",    text:"Moje nové pole"},
@@ -405,13 +412,13 @@ Step 3: create_label(
           ],
           defaultComment="Description for developers"
         )
-Step 4: Use @AslCore:MyNewField in code or XML
+Step 4: Use @MyModel:MyNewField in code or XML
 ```
 
 **Label reference syntax:**
-- In X++ code: `literalStr("@AslCore:MyLabel")` or `"@AslCore:MyLabel"` in string fields
-- In metadata XML: `<Label>@AslCore:MyLabel</Label>`
-- In field properties: `<HelpText>@AslCore:MyLabelHelp</HelpText>`
+- In X++ code: `literalStr("@MyModel:MyLabel")` or `"@MyModel:MyLabel"` in string fields
+- In metadata XML: `<Label>@MyModel:MyLabel</Label>`
+- In field properties: `<HelpText>@MyModel:MyLabelHelp</HelpText>`
 
 ## Best Practices
 
@@ -433,7 +440,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 |-----------|--------|
 | `projectPath` or `solutionPath` provided | ✅ Tool reads correct `ModelName` from `.rnrproj` |
 | Neither provided, `modelName="ApplicationSuite"` | ❌ File created in Microsoft's standard model — WRONG! |
-| Neither provided, `modelName="AslCore"` | ✅ Only if value happens to match actual model name |
+| Neither provided, `modelName="MyModel"` | ✅ Only if value happens to match actual model name |
 
 **Rules:**
 - ✅ **ALWAYS provide `projectPath` or `solutionPath`** when calling `create_d365fo_file`
@@ -495,7 +502,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 - Never create a label without first calling `search_labels()` — duplicate labels waste translation effort
 - **Never manually specify EDT types like "String", "Int"** — call `suggest_edt()` to find correct Extended Data Type
 - **Never create tables/forms without analyzing patterns first** — use `get_table_patterns()`/`get_form_patterns()` to learn from existing code
-- **🚨 CRITICAL: NEVER include the model prefix in the `name` parameter of `generate_smart_table` or `generate_smart_form`** — always pass the base name without prefix (e.g., `name="AccountTable"`, NOT `name="AslAccountTable"`). The tool applies the prefix automatically from `modelName` parameter, `D365FO_MODEL_NAME` env var, or `.rnrproj` detection. Pre-applied prefix causes double-prefixing (e.g., `AslAslAccountTable`).
+- **🚨 CRITICAL: NEVER include the model prefix in the `name` parameter of `generate_smart_table` or `generate_smart_form`** — always pass the base name without prefix (e.g., `name="AccountTable"`, NOT `name="MyAccountTable"`). The tool applies the prefix automatically from `modelName` parameter, `D365FO_MODEL_NAME` env var, or `.rnrproj` detection. Pre-applied prefix causes double-prefixing (e.g., `MyMyAccountTable`).
 - **Never call `modify_d365fo_file` after `generate_smart_table` to add methods** — use the `methods` parameter instead; `modify_d365fo_file` fails on Azure/Linux (read-only mode)
 - **🚨 NEVER use `create_file` or PowerShell as a fallback when `generate_smart_table`/`generate_smart_form` returns XML as text** — the `ℹ️ Azure/Linux` message in the response means "pass this XML to `create_d365fo_file(xmlContent=...)`", not "the tool failed". There is NO other acceptable approach.
 - **NEVER interpret `generate_smart_table`/`generate_smart_form` returning XML as a partial failure** — it is a complete success; `create_d365fo_file(xmlContent=...)` is the mandatory and only next step

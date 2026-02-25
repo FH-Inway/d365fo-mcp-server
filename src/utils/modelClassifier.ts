@@ -74,7 +74,7 @@ export function resolveObjectPrefix(modelName: string): string {
 /**
  * Apply prefix to a NEW model element name.
  * Per MS guidelines, the prefix is concatenated directly (no separator):
- *   WHSMyTable, ASLMyClass, ContosoMyForm
+ *   WHSMyTable, MyPrefixMyClass, ContosoMyForm
  *
  * Case-insensitive check prevents double-prefixing.
  */

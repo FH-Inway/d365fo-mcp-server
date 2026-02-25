@@ -36,7 +36,7 @@ Runs three searches in parallel and combines the results.
 ```
 Find my custom extensions for CustTable
 Show me all ISV_ helper classes
-Find classes in the AslCore model
+Find classes in the MyModel model
 ```
 
 ### Find a method across all classes
@@ -160,7 +160,7 @@ Create a table extension for InventTable with a custom field VendorCategory
 
 ### Generate XML only (Azure/cloud server)
 ```
-Generate the XML for a class MyHelper in the AslCore model
+Generate the XML for a class MyHelper in the MyModel model
 ```
 
 Returns the XML content. Copilot then creates the file in your workspace.
@@ -296,7 +296,7 @@ in Visual Studio. See [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md).
 Always search first — reusing an existing label avoids duplication and saves translation effort.
 
 ```
-Find a label for the text "customer account" in AslCore
+Find a label for the text "customer account" in MyModel
 ```
 
 Copilot will:
@@ -305,28 +305,28 @@ Copilot will:
 3. Show the label text and a ready-to-use X++ snippet
 
 ```
-Search for labels about "invoice" in the AslCore model
+Search for labels about "invoice" in the MyModel model
 Find all labels matching "vendor" in English
 ```
 
 ### View all translations for a label
 
 ```
-Show me all translations of label ACFeature in AslCore
+Show me all translations of label MyFeature in MyModel
 ```
 
 Copilot will:
 1. Call `get_label_info` with the label ID
 2. Return translations in every indexed language (en-US, cs, de, sk…)
 3. Show the developer comment and generate X++ / XML usage snippets:
-   - X++: `literalStr("@AslCore:ACFeature")`
-   - XML: `<Label>@AslCore:ACFeature</Label>`
+   - X++: `literalStr("@MyModel:MyFeature")`
+   - XML: `<Label>@MyModel:MyFeature</Label>`
 
 ### List all label files in a model
 
 ```
-What label files does the AslCore model have?
-List all AxLabelFile IDs available in AslCore
+What label files does the MyModel model have?
+List all AxLabelFile IDs available in MyModel
 ```
 
 Copilot will call `get_label_info` without a label ID and return a table of
@@ -335,7 +335,7 @@ file IDs, supported languages, and label counts.
 ### Create a new label with all language translations
 
 ```
-Create a new label MyNewField in the AslCore model with the text:
+Create a new label MyNewField in the MyModel model with the text:
 - en-US: "Customer account number"
 - cs: "Číslo účtu zákazníka"
 - de: "Kundenkontaktsnummer"
@@ -347,32 +347,32 @@ Copilot will:
 2. Call `create_label` with the translations for all supported languages
 3. Insert the label alphabetically into every `.label.txt` file
 4. Update the MCP index so the new label is immediately searchable
-5. Return the ready-to-use reference: `@AslCore:MyNewField`
+5. Return the ready-to-use reference: `@MyModel:MyNewField`
 
 ### Use a label in X++ code and metadata
 
 After searching for or creating a label:
 
 ```
-How do I use label @AslCore:MyNewField in X++ code?
-Generate the metadata XML property for @AslCore:MyNewField
+How do I use label @MyModel:MyNewField in X++ code?
+Generate the metadata XML property for @MyModel:MyNewField
 ```
 
 In X++ source code:
 ```xpp
-str labelText = literalStr("@AslCore:MyNewField");
+str labelText = literalStr("@MyModel:MyNewField");
 ```
 
 In metadata XML (field property):
 ```xml
-<Label>@AslCore:MyNewField</Label>
-<HelpText>@AslCore:MyNewFieldHelp</HelpText>
+<Label>@MyModel:MyNewField</Label>
+<HelpText>@MyModel:MyNewFieldHelp</HelpText>
 ```
 
 ### Check a label in a specific language
 
 ```
-Find the Czech translation of label BatchGroup in AslCore
+Find the Czech translation of label BatchGroup in MyModel
 Search for labels containing "dávk" in Czech (cs) language
 ```
 

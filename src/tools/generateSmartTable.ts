@@ -363,7 +363,7 @@ export async function handleGenerateSmartTable(
   if (!resolvedModel) {
     if (isNonWindows) {
       // Azure/Linux: model resolution requires .rnrproj which is only on the Windows VM.
-      // Use modelName arg as-is for prefix resolution (caller may pass e.g. "AslCore").
+      // Use modelName arg as-is for prefix resolution (caller may pass e.g. "MyModel").
       // If not provided either, generate XML without prefix and return it as text.
       // Fallback priority: modelName arg → modelName/workspacePath (mcp.json) → D365FO_MODEL_NAME env var → no prefix
       const configModel = configManager.getModelName();
@@ -491,7 +491,7 @@ export async function handleGenerateSmartTable(
   if (isNonWindows) {
     const noModelNote = resolvedModel
       ? ''
-      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` (e.g. \`"AslCore"\`) for correct object naming.\n> 🚨 **IMPORTANT**: Do NOT add a prefix to the \`name\` parameter when calling this tool — the tool applies the prefix automatically from \`modelName\`. If you pass e.g. \`name="AslAccountTable"\`, the result will be double-prefixed as \`"AslAslAccountTable"\`.`;
+      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` (e.g. \`"MyModel"\`) for correct object naming.\n> 🚨 **IMPORTANT**: Do NOT add a prefix to the \`name\` parameter when calling this tool — the tool applies the prefix automatically from \`modelName\`. If you pass e.g. \`name="MyAccountTable"\`, the result will be double-prefixed as \`"MyMyAccountTable"\`.`;
     const nextStep = [
       ``,
       `**✅ MANDATORY NEXT STEP — immediately call \`create_d365fo_file\` with the XML below:**`,

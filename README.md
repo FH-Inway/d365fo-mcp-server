@@ -115,8 +115,8 @@ Copy-Item -Path ".github" -Destination "C:\Path\To\YourSolution\" -Recurse
 | Prompt | What happens |
 |--------|-------------|
 | `Find a label for "customer"` | Searches all AxLabelFile objects |
-| `Translations of label ACFeature in model AslCore` | All languages at once |
-| `Create a new label MyNewField in AslCore` | Writes to all .label.txt files |
+| `Translations of label MyFeature in model MyModel` | All languages at once |
+| `Create a new label MyNewField in MyModel` | Writes to all .label.txt files |
 
 ### 📝 File Operations *(local VM only)*
 - Generates correct D365FO XML for classes, tables, forms, enums

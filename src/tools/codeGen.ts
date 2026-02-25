@@ -17,7 +17,7 @@ const CodeGenArgsSchema = z.object({
     'For EXTENSIONS (table-extension, form-handler): the BASE element name to extend (e.g. "CustTable", "SalesTable").'
   ),
   modelName: z.string().optional().describe(
-    'Model/solution prefix used to derive the naming infix when EXTENSION_PREFIX is not set (e.g. "AslCore"). ' +
+    'Model/solution prefix used to derive the naming infix when EXTENSION_PREFIX is not set (e.g. "MyModel"). ' +
     'Required for extension patterns when EXTENSION_PREFIX is not configured.'
   ),
 });

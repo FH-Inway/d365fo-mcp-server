@@ -79,7 +79,7 @@ async function buildDatabase() {
         .filter(e => e.isDirectory())
         .map(e => e.name);
       
-      // Expand patterns (e.g., "Asl*" → ["AslCore", "AslFinanceCore", ...])
+      // Expand patterns (e.g., "My*" → ["MyModel", "MyFinanceCore", ...])
       const expandedModels: string[] = [];
       for (const pattern of CUSTOM_MODELS) {
         if (pattern.includes('*')) {

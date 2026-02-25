@@ -223,7 +223,7 @@ Create a variable group named `xpp-mcp-server-config` in Azure DevOps with these
 |----------|--------|--------------|
 | `AZURE_STORAGE_CONNECTION_STRING` | ✅ Yes | Connection string from Azure Portal |
 | `BLOB_CONTAINER_NAME` | No | `xpp-metadata` |
-| `CUSTOM_MODELS` | No | `AslCore,AslFinance` |
+| `CUSTOM_MODELS` | No | `MyModel,MyFinance` |
 | `AZURE_SUBSCRIPTION` | No | Name of your Azure service connection |
 | `AZURE_APP_SERVICE_NAME` | No | `xpp-mcp-server` |
 

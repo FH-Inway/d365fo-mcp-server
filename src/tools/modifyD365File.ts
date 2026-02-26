@@ -345,6 +345,16 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
+  // Special case: classDeclaration lives in SourceCode > Declaration, not in Methods array.
+  // Use add-method with methodName="classDeclaration" to set/replace the class header.
+  if (methodName === 'classDeclaration') {
+    if (!root.SourceCode || typeof root.SourceCode[0] !== 'object') {
+      root.SourceCode = [{}];
+    }
+    root.SourceCode[0].Declaration = [methodCode || ''];
+    return true;
+  }
+
   // Methods are always under SourceCode > Methods for all D365FO object types
   // (AxClass, AxTable, AxForm all use <SourceCode><Methods>...</Methods></SourceCode>)
   //
@@ -402,12 +412,20 @@ async function removeMethod(xmlObj: any, objectType: string, args: any): Promise
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
+  // Special case: classDeclaration is the Declaration element, not a Method node.
+  if (methodName === 'classDeclaration') {
+    throw new Error(
+      'classDeclaration cannot be removed. Use add-method with methodName="classDeclaration" to replace the class header.'
+    );
+  }
+
   // Methods are always under SourceCode > Methods for all D365FO object types
   const methodsContainer = root.SourceCode?.[0];
   if (!methodsContainer?.Methods?.[0]?.Method) {
     throw new Error('No methods found in object');
   }
 
+  // Also search Declaration — some exporters store classDeclaration as a Method node
   const methods = methodsContainer.Methods[0].Method;
   const index = methods.findIndex((m: any) => m.Name && m.Name[0] === methodName);
 

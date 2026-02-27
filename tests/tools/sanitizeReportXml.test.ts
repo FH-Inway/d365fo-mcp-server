@@ -323,6 +323,7 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
   describe('fix 8: RDL schema-aware structural repair', () => {
     const NS_2008 = 'http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition';
     const NS_2010 = 'http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition';
+    const NS_2016 = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition';
 
     // 2008: PageHeader as direct child of Report (wrong — must be inside Page)
     const RDL_2008_WRONG = `<?xml version="1.0"?><Report xmlns="${NS_2008}"><PageHeader><Height>1cm</Height></PageHeader><Body><Height>10cm</Height></Body></Report>`;
@@ -403,6 +404,28 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
     it('2010: fix is idempotent', () => {
       const xml = makeAxReport(RDL_2010_WRONG_PAGE);
       const once = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+
+    // ── 2016 tests ────────────────────────────────────────────
+    it('2016: wraps Body+Page in <ReportSections>/<ReportSection>', () => {
+      const RDL_2016_WRONG = `<?xml version="1.0"?><Report xmlns="${NS_2016}"><DataSources /><Body><Height>10cm</Height></Body><Page><PageHeader><Height>1cm</Height></PageHeader></Page></Report>`;
+      const xml = makeAxReport(RDL_2016_WRONG);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<ReportSections>');
+      expect(result).toContain('<ReportSection>');
+      const sectionIdx = result.indexOf('<ReportSection>');
+      const bodyIdx    = result.indexOf('<Body>');
+      const pageIdx    = result.indexOf('<Page>');
+      expect(bodyIdx).toBeGreaterThan(sectionIdx);
+      expect(pageIdx).toBeGreaterThan(sectionIdx);
+    });
+
+    it('2016: fix is idempotent', () => {
+      const RDL_2016_WRONG = `<?xml version="1.0"?><Report xmlns="${NS_2016}"><DataSources /><Body><Height>10cm</Height></Body><Page><PageHeader><Height>1cm</Height></PageHeader></Page></Report>`;
+      const xml = makeAxReport(RDL_2016_WRONG);
+      const once  = XmlTemplateGenerator.sanitizeReportXml(xml);
       const twice = XmlTemplateGenerator.sanitizeReportXml(once);
       expect(twice).toBe(once);
     });

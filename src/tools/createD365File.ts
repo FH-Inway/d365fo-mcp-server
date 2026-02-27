@@ -861,13 +861,16 @@ ${defaultParamGroupXml}
 
     // 8. Fix embedded RDL structural issues based on the SSRS namespace version:
     //    2008/01 — <PageHeader>/<PageFooter> must be inside <Page> (direct child of <Report>).
-    //    2010/01 — <Body> and <Page> must NOT be direct children of <Report>; they must be
-    //              wrapped in <ReportSections><ReportSection>...</ReportSection></ReportSections>.
-    //              Placing <Page> directly under <Report> (as the old fix did) causes:
+    //    2010/01+ (2010, 2016, future) — <Body> and <Page> must NOT be direct children of
+    //              <Report>; they must be wrapped in:
+    //              <ReportSections><ReportSection>...</ReportSection></ReportSections>
+    //              Placing <Page> directly under <Report> causes:
     //              "Deserialization failed: invalid child element 'Page'" in VS Designer.
     xml = xml.replace(/(<Text><!\[CDATA\[)([\s\S]*?)(\]\]><\/Text>)/, (_whole, open, rdl, close) => {
-      const is2010 = rdl.includes('reporting/2010/01/reportdefinition');
       const is2008 = rdl.includes('reporting/2008/01/reportdefinition');
+      // Any SSRS namespace newer than 2008 requires ReportSections wrapping
+      const isModernRdl = !is2008 && /reporting\/20\d\d\/\d\d\/reportdefinition/.test(rdl);
+      const is2010 = isModernRdl; // kept for branch clarity below
       let fixedRdl = rdl;
       let changed = false;
 
@@ -898,7 +901,8 @@ ${defaultParamGroupXml}
             ? fixedRdl.replace('</Report>', reportSections + '\n</Report>')
             : fixedRdl + '\n' + reportSections;
           changed = true;
-          console.error('[sanitizeReportXml] Wrapped Body+Page in <ReportSections>/<ReportSection> for 2010 RDL');
+          const rdlVersion = rdl.match(/reporting\/(20\d\d\/\d\d)\/reportdefinition/)?.[1] ?? 'modern';
+          console.error(`[sanitizeReportXml] Wrapped Body+Page in <ReportSections>/<ReportSection> for ${rdlVersion} RDL`);
         }
 
       } else if (is2008 && !rdl.match(/<Page[\s\S]*?<\/Page>/) && (rdl.includes('<PageHeader') || rdl.includes('<PageFooter'))) {

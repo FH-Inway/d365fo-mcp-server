@@ -74,8 +74,8 @@ Examples:
               query: { type: 'string', description: 'Search query (class name, method name, table name, etc.)' },
               type: { 
                 type: 'string', 
-                enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
-                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, all=no filter)',
+                enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
+                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, edt=AxEdt, form=AxForm, query=AxQuery, view=AxView, report=AxReport, all=no filter)',
                 default: 'all'
               },
               limit: { type: 'number', description: 'Maximum results to return', default: 20 },
@@ -118,7 +118,7 @@ workspacePath and includeWorkspace parameters.`,
                     },
                     type: {
                       type: 'string',
-                      enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
+                      enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
                       default: 'all',
                       description: 'Filter by object type',
                     },
@@ -625,7 +625,7 @@ Examples:
               },
               targetType: {
                 type: 'string',
-                enum: ['class', 'method', 'field', 'table', 'enum', 'all'],
+                enum: ['class', 'method', 'field', 'table', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
                 description: 'Type of the target to search for',
                 default: 'all'
               },

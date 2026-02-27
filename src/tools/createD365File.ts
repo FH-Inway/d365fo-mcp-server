@@ -1313,6 +1313,76 @@ ${defaultParamGroupXml}
       return open + fixedRdl + close;
     });
 
+    // 15. Fix absorbed TablixCells following a ColSpan > 1.
+    //     Confirmed by real D365FO reports: when <CellContents> has <ColSpan>N</ColSpan>,
+    //     the next N-1 sibling TablixCells in the same <TablixCells> block must be empty
+    //     (<TablixCell />). AI generators give those absorbed cells full CellContents,
+    //     causing VS Report Designer to render an empty/broken design surface.
+    //     Approach: for each <ColSpan>N</ColSpan>, trace past its containing
+    //     </CellContents></TablixCell> then depth-count-walk the next N-1 TablixCells
+    //     and replace any non-empty ones with <TablixCell />.
+    xml = xml.replace(/(<Text><!\[CDATA\[)([\s\S]*?)(\]\]><\/Text>)/, (_whole, open, rdl, close) => {
+      let fixedRdl = rdl;
+      const patches: { start: number; end: number }[] = [];
+
+      const csRe = /<ColSpan>(\d+)<\/ColSpan>/g;
+      let csMatch: RegExpExecArray | null;
+      while ((csMatch = csRe.exec(fixedRdl)) !== null) {
+        const span = parseInt(csMatch[1], 10);
+        if (span <= 1) continue;
+
+        // Find </CellContents> that closes the CellContents containing this ColSpan
+        const ccCloseIdx = fixedRdl.indexOf('</CellContents>', csMatch.index + csMatch[0].length);
+        if (ccCloseIdx === -1) continue;
+        // Find </TablixCell> that closes the TablixCell containing this CellContents
+        const tcCloseIdx = fixedRdl.indexOf('</TablixCell>', ccCloseIdx + '</CellContents>'.length);
+        if (tcCloseIdx === -1) continue;
+
+        let pos = tcCloseIdx + '</TablixCell>'.length;
+
+        for (let i = 0; i < span - 1; i++) {
+          // Skip whitespace
+          while (pos < fixedRdl.length && /\s/.test(fixedRdl[pos])) pos++;
+
+          if (fixedRdl.startsWith('<TablixCell />', pos) || fixedRdl.startsWith('<TablixCell/>', pos)) {
+            // Already empty — advance
+            pos += fixedRdl.startsWith('<TablixCell />', pos) ? '<TablixCell />'.length : '<TablixCell/>'.length;
+            continue;
+          }
+          if (!fixedRdl.startsWith('<TablixCell>', pos)) break; // Not a TablixCell
+
+          // Walk to balanced </TablixCell>, counting nested TablixCell depth
+          let depth = 1;
+          let search = pos + '<TablixCell>'.length;
+          while (depth > 0 && search < fixedRdl.length) {
+            const nextOpen  = fixedRdl.indexOf('<TablixCell>',  search);
+            const nextClose = fixedRdl.indexOf('</TablixCell>', search);
+            if (nextClose === -1) { depth = 0; break; }
+            if (nextOpen !== -1 && nextOpen < nextClose) {
+              depth++;
+              search = nextOpen + '<TablixCell>'.length;
+            } else {
+              depth--;
+              search = nextClose + '</TablixCell>'.length;
+            }
+          }
+          const cellEnd = search;
+          patches.push({ start: pos, end: cellEnd });
+          pos = cellEnd;
+        }
+      }
+
+      if (patches.length === 0) return _whole;
+      // Apply patches in reverse order to preserve string positions
+      patches.sort((a, b) => b.start - a.start);
+      let result = fixedRdl;
+      for (const p of patches) {
+        result = result.substring(0, p.start) + '<TablixCell />' + result.substring(p.end);
+      }
+      console.error(`[sanitizeReportXml] Emptied ${patches.length} absorbed TablixCell(s) following ColSpan in embedded RDL`);
+      return open + result + close;
+    });
+
     return xml;
   }
 }

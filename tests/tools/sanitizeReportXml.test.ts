@@ -699,4 +699,64 @@ describe('XmlTemplateGenerator.sanitizeReportXml()', () => {
       expect(twice).toBe(once);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fix 15 — absorbed TablixCells must be empty after ColSpan > 1
+  // ─────────────────────────────────────────────────────────────
+  describe('fix 15: absorbed TablixCells must be empty after ColSpan > 1', () => {
+    const NS = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition';
+    const wrap = (rdl: string) =>
+      `<AxReport xmlns="Microsoft.Dynamics.AX.Metadata.V2"><Name>R</Name><DataMethods /><Designs><AxReportDesign xmlns="" i:type="AxReportPrecisionDesign"><Name>Report</Name><Text><![CDATA[${rdl}]]></Text></AxReportDesign></Designs></AxReport>`;
+
+    const tbxInner = `<Paragraphs><Paragraph><TextRuns><TextRun><Value>X</Value><Style/></TextRun></TextRuns><Style/></Paragraph></Paragraphs><Height>0.25in</Height>`;
+    const fullCell = (name: string) =>
+      `<TablixCell><CellContents><Textbox Name="${name}">${tbxInner}</Textbox></CellContents></TablixCell>`;
+    const spanCell = (name: string, span: number) =>
+      `<TablixCell><CellContents><Textbox Name="${name}">${tbxInner}</Textbox><ColSpan>${span}</ColSpan></CellContents></TablixCell>`;
+
+    it('empties the absorbed cell after ColSpan=2', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><TablixCells>${spanCell('H1', 2)}${fullCell('H2')}</TablixCells></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toContain('<TablixCell />');
+      // The ColSpan cell itself must remain intact
+      expect(result).toContain('<ColSpan>2</ColSpan>');
+      expect(result).toContain('Name="H1"');
+      // The absorbed cell must be empty
+      expect(result).not.toContain('Name="H2"');
+    });
+
+    it('empties two absorbed cells after ColSpan=3', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><TablixCells>${spanCell('H1', 3)}${fullCell('H2')}${fullCell('H3')}${fullCell('H4')}</TablixCells></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      // H1 spans 3 → H2 and H3 absorbed; H4 is a real cell
+      expect(result).toContain('Name="H1"');
+      expect(result).not.toContain('Name="H2"');
+      expect(result).not.toContain('Name="H3"');
+      expect(result).toContain('Name="H4"');
+    });
+
+    it('does not modify already-empty absorbed cells', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><TablixCells>${spanCell('H1', 2)}<TablixCell /></TablixCells></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toBe(xml);
+    });
+
+    it('does not modify cells when ColSpan=1', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><TablixCells>${spanCell('H1', 1)}${fullCell('H2')}</TablixCells></Report>`;
+      const xml = wrap(rdl);
+      const result = XmlTemplateGenerator.sanitizeReportXml(xml);
+      expect(result).toBe(xml);
+    });
+
+    it('fix 15 is idempotent', () => {
+      const rdl = `<?xml version="1.0"?><Report xmlns="${NS}"><TablixCells>${spanCell('H1', 2)}${fullCell('H2')}</TablixCells></Report>`;
+      const xml = wrap(rdl);
+      const once  = XmlTemplateGenerator.sanitizeReportXml(xml);
+      const twice = XmlTemplateGenerator.sanitizeReportXml(once);
+      expect(twice).toBe(once);
+    });
+  });
 });

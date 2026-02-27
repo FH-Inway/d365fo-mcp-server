@@ -74,8 +74,8 @@ Examples:
               query: { type: 'string', description: 'Search query (class name, method name, table name, etc.)' },
               type: { 
                 type: 'string', 
-                enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
-                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, all=no filter)',
+                enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
+                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, edt=AxEdt, form=AxForm, query=AxQuery, view=AxView, report=AxReport, all=no filter)',
                 default: 'all'
               },
               limit: { type: 'number', description: 'Maximum results to return', default: 20 },
@@ -118,7 +118,7 @@ workspacePath and includeWorkspace parameters.`,
                     },
                     type: {
                       type: 'string',
-                      enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
+                      enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
                       default: 'all',
                       description: 'Filter by object type',
                     },
@@ -296,8 +296,8 @@ Examples (CLASSES only):
           description: `🎯 GENERATE X++ CODE - Call this FIRST when user asks to CREATE/BUILD D365FO objects!
 
 WHEN TO USE (keywords):
-- "vytvoř" / "create" / "build" / "implement" / "add new" / "generate" / "make"
-- "dávková úloha" = batch-job, "pomocná třída" = helper class, "runnable" = runnable class
+- "create" / "build" / "implement" / "add new" / "generate" / "make"
+- "batch job" = batch-job, "helper class" = helper class, "runnable" = runnable class
 - ANY request to create NEW D365FO class, batch job, form handler, data entity
 
 WORKFLOW (ALWAYS follow):
@@ -306,7 +306,7 @@ WORKFLOW (ALWAYS follow):
 3. Call create_d365fo_file(objectType="class", objectName=name, sourceCode=<from step 2>, addToProject=true)
 
 PATTERNS:
-- "batch-job" → Dávková úloha (extends RunBaseBatch) with dialog, pack/unpack, contract class
+- "batch-job" → Batch job (extends RunBaseBatch) with dialog, pack/unpack, contract class
 - "class" → Standard helper/utility class
 - "runnable" → Runnable class with main() method
 - "form-handler" → Form event handler (datasource/control event subscribers)
@@ -314,7 +314,7 @@ PATTERNS:
 - "table-extension" → Table extension [ExtensionOf(tableStr(TableName))]
 
 EXAMPLES:
-- "Vytvoř dávkovou úlohu pro zpracování objednávek" 
+- "Create batch job for processing orders"
   → generate_code(pattern="batch-job", name="ProcessOpenOrdersBatch")
 - "Create helper class for sales calculations"
   → generate_code(pattern="class", name="SalesCalculationHelper")
@@ -454,14 +454,14 @@ Examples:
         },
         {
           name: 'create_d365fo_file',
-          description: `🔥 VYTVOŘ/CREATE D365FO FILE - REPLACES BUILT-IN create_file FOR ALL D365FO OBJECTS!
+          description: `🔥 CREATE D365FO FILE - REPLACES BUILT-IN create_file FOR ALL D365FO OBJECTS!
 
 🚨 WARNING: BUILT-IN create_file WILL CORRUPT D365FO METADATA! NEVER USE IT FOR .xml FILES!
 
 WHEN TO USE (MUST use for ANY D365FO object creation):
-- User asks to CREATE, BUILD, IMPLEMENT, GENERATE new class, table, enum, form, query, view, or data entity
-- Keywords: "vytvoř", "create", "build", "implement", "add new", "generate", "make"
-- "dávková úloha" = batch-job class, "pomocná třída" = helper class, "runnable" = runnable class
+- User asks to CREATE, BUILD, IMPLEMENT, GENERATE new class, table, enum, form, query, view, data entity, or SSRS report
+- Keywords: "create", "build", "implement", "add new", "generate", "make"
+- "batch job" = batch-job class, "helper class" = helper class, "runnable" = runnable class, "report" = objectType="report"
 - ANY request to create a new D365FO object
 
 WHY NOT create_file:
@@ -475,7 +475,7 @@ WHAT IT DOES:
 - Generates proper XML structure with UTF-8 BOM encoding
 
 REQUIRED PARAMETERS:
-- objectType: class, table, enum, form, query, view, data-entity
+- objectType: class, table, enum, form, query, view, data-entity, report
 - objectName: Name of the new object (e.g., "ProcessOpenOrdersBatch" for batch job)
 - modelName: Any value (auto-corrected from .rnrproj)
 - addToProject: true (to automatically add to VS project)
@@ -485,14 +485,14 @@ WORKFLOW:
 2. create_d365fo_file(objectType="class", objectName="MyBatch", sourceCode=<step 1>, addToProject=true)
 
 EXAMPLES:
-- "Vytvoř dávkovou úlohu pro zpracování objednávek" → create_d365fo_file(objectType="class", objectName="ProcessOrdersBatch", addToProject=true)
+- "Create batch job for processing orders" → create_d365fo_file(objectType="class", objectName="ProcessOrdersBatch", addToProject=true)
 - "Create helper class for sales calculations" → create_d365fo_file(objectType="class", objectName="SalesCalculationHelper", addToProject=true)`,
           inputSchema: {
             type: 'object',
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'],
+                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
                 description: 'Type of D365FO object to create'
               },
               objectName: {
@@ -532,6 +532,22 @@ EXAMPLES:
                 type: 'string',
                 description: 'Path to VS solution directory. Used to find .rnrproj when projectPath is not specified.'
               },
+              xmlContent: {
+                type: 'string',
+                description:
+                  'Complete XML to write verbatim instead of generating a template. ' +
+                  'Use with overwrite=true to completely rewrite an existing object. ' +
+                  'Also used in Azure/Linux setups: generate XML via generate_smart_table/form, then pass here.',
+              },
+              overwrite: {
+                type: 'boolean',
+                description:
+                  'Allow overwriting an existing file. Use together with xmlContent when you need to ' +
+                  'completely rewrite an object (e.g. table with corrupted field names, wrong TableType, \u2026). ' +
+                  'A .bak backup is created automatically. Default: false. ' +
+                  '\u274c NEVER use PowerShell/create_file to overwrite D365FO objects \u2014 always use overwrite=true here.',
+                default: false,
+              },
             },
             required: ['objectType', 'objectName', 'modelName'],
           },
@@ -544,7 +560,7 @@ EXAMPLES:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'],
+                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
                 description: 'Type of D365FO object to generate'
               },
               objectName: {
@@ -561,7 +577,18 @@ EXAMPLES:
               },
               properties: {
                 type: 'object',
-                description: 'Additional properties (extends, implements, label, etc.)'
+                description: `Additional properties depending on objectType:
+- class/form/query/view: extends, implements, label
+- table: label, tableGroup, fields[]
+- report (ALL REQUIRED for correct XML):
+    dpClassName   {string}  Data Provider class name (e.g. "AslInventByZoneDP")
+    tmpTableName  {string}  TempDB table name        (e.g. "AslInventByZoneTmp")
+    datasetName   {string}  Dataset name — defaults to tmpTableName if omitted
+    designName    {string}  Design name              (default: "Report")
+    caption       {string}  Design caption label ref (e.g. "@MyModel:MyLabel")
+    style         {string}  Design style             (e.g. "TableStyleTemplate")
+    fields        {Array}   [{name, alias?, dataType?, caption?}] → AxReportDataSetField entries
+    rdlContent    {string}  Full RDL XML to embed in <Text><![CDATA[...]]></Text>`
               },
             },
             required: ['objectType', 'objectName', 'modelName'],
@@ -598,7 +625,7 @@ Examples:
               },
               targetType: {
                 type: 'string',
-                enum: ['class', 'method', 'field', 'table', 'enum', 'all'],
+                enum: ['class', 'method', 'field', 'table', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
                 description: 'Type of the target to search for',
                 default: 'all'
               },
@@ -628,8 +655,13 @@ Examples:
               },
               operation: {
                 type: 'string',
-                enum: ['add-method', 'add-field', 'modify-field', 'modify-property', 'remove-method', 'remove-field'],
-                description: 'Type of modification to perform. Use modify-field to change EDT/mandatory/label of an existing field.'
+                enum: ['add-method', 'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'modify-property', 'remove-method', 'remove-field'],
+                description:
+                  'Type of modification to perform. ' +
+                  'Use modify-field to change EDT/mandatory/label of an existing field. ' +
+                  'Use rename-field to rename a field (also fixes index + TitleField refs). ' +
+                  'Use replace-all-fields to atomically rewrite ALL fields at once (e.g. when field names are corrupted / have spaces). ' +
+                  'Use modify-property for table/EDT/class-level properties (TableGroup, TitleField1, TableType, Extends, …).'
               },
               methodName: {
                 type: 'string',
@@ -653,7 +685,16 @@ Examples:
               },
               fieldName: {
                 type: 'string',
-                description: 'Field name (required for add-field, modify-field, remove-field)'
+                description: 'Field name (required for add-field, modify-field, rename-field, remove-field)'
+              },
+              fieldNewName: {
+                type: 'string',
+                description:
+                  'New field name (required for rename-field). ' +
+                  'Also fixes index DataField refs and TitleField1/2 automatically. ' +
+                  'Works even if the field in <Fields> was already renamed (e.g. by replace-all-fields) — ' +
+                  'in that case only the index DataField references are updated (repair-only mode). ' +
+                  'Pass fieldName=old corrupted name, fieldNewName=correct name.'
               },
               fieldType: {
                 type: 'string',
@@ -666,6 +707,26 @@ Examples:
               fieldLabel: {
                 type: 'string',
                 description: 'Field label (for add-field and modify-field)'
+              },
+              fields: {
+                type: 'array',
+                description:
+                  'Full replacement field list for replace-all-fields operation. ' +
+                  'Each item: { name: string, edt?: string, type?: string, mandatory?: boolean, label?: string }. ' +
+                  'Use when field names are corrupted (contain spaces, wrong casing, wrong EDT). ' +
+                  'All existing fields are replaced atomically. Backup is created automatically. ' +
+                  '❌ NEVER use PowerShell/create_file for this — always use replace-all-fields.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    edt: { type: 'string' },
+                    type: { type: 'string' },
+                    mandatory: { type: 'boolean' },
+                    label: { type: 'string' },
+                  },
+                  required: ['name'],
+                },
               },
               propertyPath: {
                 type: 'string',
@@ -946,6 +1007,54 @@ Examples:
               },
             },
             required: ['edtName'],
+          },
+        },
+        {
+          name: 'get_report_info',
+          description: `📄 Read AxReport XML structure directly — datasets, fields, designs, RDL summary.
+
+Use this INSTEAD of PowerShell Get-Content when studying an existing SSRS report.
+Returns structured info without running any shell commands.
+
+Returns:
+- DataSets: name, DataSourceType, Query string, all AxReportDataSetField entries (Name/Alias/DataType/Caption)
+- Designs: name, Caption, linked DataSet, Style, whether RDL is embedded
+- RDL summary (element counts: Tablix, groups, parameters, language) — use includeRdl=true for full RDL
+- DataMethods presence, EmbeddedImages count
+
+Use WHEN:
+- Studying an existing report before creating a similar one
+- Checking what fields/aliases a DataSet exposes
+- Verifying report structure after create_d365fo_file
+- Understanding RDL design without opening Report Designer
+
+Examples:
+- get_report_info("InventValue") → datasets, fields, design structure of InventValue report
+- get_report_info("AslInventByZone") → datasets + RDL summary
+- get_report_info("AslInventByZone", includeRdl=true) → full embedded RDL XML`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              reportName: {
+                type: 'string',
+                description: 'Name of the AxReport object (e.g. "InventValue", "AslInventByZone")',
+              },
+              modelName: {
+                type: 'string',
+                description: 'Model name — auto-detected from .mcp.json if not provided',
+              },
+              includeFields: {
+                type: 'boolean',
+                description: 'Include AxReportDataSetField entries (default: true)',
+                default: true,
+              },
+              includeRdl: {
+                type: 'boolean',
+                description: 'Include full embedded RDL content — can be large (default: false; use true only when you need to read/modify the RDL)',
+                default: false,
+              },
+            },
+            required: ['reportName'],
           },
         },
         {

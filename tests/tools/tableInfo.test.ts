@@ -5,6 +5,15 @@ import type { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import type { XppMetadataParser } from '../../src/metadata/xmlParser';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
+// Prevent findD365FileOnDisk from scanning the real filesystem during unit tests
+vi.mock('../../src/tools/modifyD365File', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/tools/modifyD365File')>();
+  return {
+    ...actual,
+    findD365FileOnDisk: vi.fn(async () => null),
+  };
+});
+
 describe('tableInfoTool', () => {
   let mockContext: XppServerContext;
   let mockSymbolIndex: Partial<XppSymbolIndex>;

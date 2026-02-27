@@ -126,7 +126,7 @@ export interface XppViewInfo {
 
 export interface XppSymbol {
   name: string;
-  type: 'class' | 'table' | 'form' | 'query' | 'view' | 'method' | 'field' | 'enum' | 'edt';
+  type: 'class' | 'table' | 'form' | 'query' | 'view' | 'method' | 'field' | 'enum' | 'edt' | 'report';
   parentName?: string;
   signature?: string;
   filePath: string;

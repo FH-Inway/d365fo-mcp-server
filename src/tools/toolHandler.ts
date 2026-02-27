@@ -66,6 +66,7 @@ import { getQueryInfoTool } from './queryInfo.js';
 import { getViewInfoTool } from './viewInfo.js';
 import { getEnumInfoTool } from './enumInfo.js';
 import { getEdtInfoTool } from './edtInfo.js';
+import { getReportInfoTool } from './reportInfo.js';
 import { searchLabelsTool } from './searchLabels.js';
 import { getLabelInfoTool } from './getLabelInfo.js';
 import { createLabelTool } from './createLabel.js';
@@ -84,6 +85,7 @@ import { handleSuggestEdt } from './suggestEdt.js';
 const UNCAPPED_TOOLS = new Set([
   'generate_smart_table', 'generate_smart_form',
   'create_d365fo_file', 'generate_d365fo_xml',
+  'get_report_info',  // report XML + optional full RDL can exceed 3.5k chars
 ]);
 
 /** Hard limit on text returned to Copilot per tool call to stay under 64k context budget */
@@ -170,6 +172,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return getEnumInfoTool(request, context);
       case 'get_edt_info':
         return getEdtInfoTool(request, context);
+      case 'get_report_info':
+        return getReportInfoTool(request, context);
       case 'search_labels':
         return searchLabelsTool(request, context);
       case 'get_label_info':

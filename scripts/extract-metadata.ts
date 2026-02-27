@@ -64,6 +64,7 @@ interface ExtractionStats {
   dataEntities: number;
   enums: number;
   edts: number;
+  reports: number;
   errors: number;
 }
 
@@ -118,6 +119,7 @@ async function countModelXmlFiles(modelPath: string): Promise<number> {
     'AxDataEntityView', 'axdataentityview',
     'AxEnum', 'axenum',
     'AxEdt', 'axedt',
+    'AxReport', 'axreport',
   ];
 
   for (const sourceDir of sourceDirs) {
@@ -195,6 +197,7 @@ async function extractMetadata() {
     dataEntities: 0,
     enums: 0,
     edts: 0,
+    reports: 0,
     errors: 0,
   };
 
@@ -398,6 +401,9 @@ async function extractMetadata() {
     // Extract EDTs
     await extractEdts(parser, modelItem.modelPath, modelItem.modelName, stats);
 
+    // Extract Reports
+    await extractReports(modelItem.modelPath, modelItem.modelName, stats);
+
     const modelDuration = Date.now() - modelStart;
     cumulativeModelDuration += modelDuration;
     processedModels++;
@@ -425,6 +431,7 @@ async function extractMetadata() {
   console.log(`   Data entities: ${formatCount(stats.dataEntities)}`);
   console.log(`   Enums: ${formatCount(stats.enums)}`);
   console.log(`   EDTs: ${formatCount(stats.edts)}`);
+  console.log(`   Reports: ${formatCount(stats.reports)}`);
   console.log(`   Errors: ${formatCount(stats.errors)}`);
 }
 
@@ -806,6 +813,66 @@ async function extractEdts(
     }
   }
 
+}
+
+/**
+ * Extract AxReport metadata.
+ * Reports are stored as lightweight stubs — just name + file_path.
+ * The get_report_info tool reads the live XML on demand rather than
+ * caching a full parse, so we only need enough for the symbol DB entry.
+ */
+async function extractReports(
+  modelPath: string,
+  modelName: string,
+  stats: ExtractionStats
+) {
+  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+  let reportsPath = path.join(modelPath, 'AxReport');
+
+  try {
+    await fs.access(reportsPath);
+  } catch {
+    // Try lowercase
+    reportsPath = path.join(modelPath, 'axreport');
+    try {
+      await fs.access(reportsPath);
+    } catch {
+      return; // No reports in this model
+    }
+  }
+
+  const files = await fs.readdir(reportsPath);
+  const xmlFiles = files.filter(f => f.endsWith('.xml'));
+
+  if (xmlFiles.length === 0) return;
+  console.log(`   Reports: ${formatCount(xmlFiles.length)} files`);
+
+  const outputDir = path.join(OUTPUT_PATH, modelName, 'reports');
+  await fs.mkdir(outputDir, { recursive: true });
+
+  for (const file of xmlFiles) {
+    const filePath = path.join(reportsPath, file);
+    stats.totalFiles++;
+
+    try {
+      const name = file.replace('.xml', '');
+      const stub = {
+        name,
+        type: 'report',
+        model: modelName,
+        // sourcePath lets reportInfo.ts read the live XML via the JSON metadata wrapper
+        sourcePath: filePath,
+      };
+
+      const outputFile = path.join(outputDir, `${name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify(stub, null, 2));
+
+      stats.reports++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting report ${file}:`, error);
+      stats.errors++;
+    }
+  }
 }
 
 // Run extraction

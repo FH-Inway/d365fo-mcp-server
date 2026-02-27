@@ -1,7 +1,7 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-29 tools to look up the answer or generate code. You do not need to name the tools yourself —
+30 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
@@ -21,13 +21,14 @@ just ask in plain English.
 | **get_edt_info** | Extended Data Type definition: base type, labels, properties | "Show me EDT properties for CustAccount" |
 | **code_completion** | List methods/fields on a class or table | "What methods start with 'calc' on SalesTable?" |
 
-### Advanced Object Info (5 tools)
+### Advanced Object Info (6 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **get_form_info** | Form structure: datasources, controls, methods | "Show me the datasources in SalesTable form" |
 | **get_query_info** | Query structure: datasources, joins, ranges | "Analyze CustTransOpenQuery" |
 | **get_view_info** | View/data entity: fields, relations, methods | "Show me GeneralJournalAccountEntryView" |
+| **get_report_info** | AxReport structure: datasets, fields, designs, RDL summary | "Show me the dataset fields of InventValue report" |
 | **get_method_signature** | Exact signature for CoC extensions | "Get signature of CustTable.validateWrite()" |
 | **find_references** | Where is this class/method/field used? | "Where is DimensionAttributeValueSet used?" |
 
@@ -81,7 +82,7 @@ just ask in plain English.
 
 Searches all 584 799+ D365FO symbols. Understands type filters so you can narrow results.
 
-**Supported types:** class, table, method, field, enum, edt
+**Supported types:** class, table, method, field, enum, edt, form, query, view, report
 
 **Examples:**
 ```
@@ -240,6 +241,39 @@ What is the primary key of VendorV2Entity?
 
 ---
 
+### get_report_info
+
+Reads an AxReport XML file from disk and returns structured information about its contents.
+Use this **instead of PowerShell `Get-Content`** when studying an existing SSRS report before
+creating a similar one or extending it.
+
+Reports are indexed as type `report` in the symbol database, so you can also find them
+with `search(query, type: 'report')`.
+
+**Parameters:**
+- `reportName` — AxReport object name without `.xml` extension (required)
+- `modelName` — model name; auto-detected from `.mcp.json` if omitted
+- `includeFields` — include per-dataset field list (default: `true`)
+- `includeRdl` — include full embedded RDL XML (default: `false`; can be large)
+
+**Returns:**
+- Report name, model, file path
+- DataMethods and EmbeddedImages presence
+- For each **DataSet**: name, `DataSourceType`, query (`SELECT * FROM DP.TmpTable`),
+  field names + aliases + data types, field groups
+- For each **Design**: name, caption, linked DataSet, style, whether RDL is present
+- Optional RDL summary (element counts, Tablix/Chart count, ReportParameters, language)
+  or the full RDL XML when `includeRdl: true`
+
+**Examples:**
+```
+Show me the dataset fields of the InventValue report
+What does the AslInventByZone report look like — datasets and design?
+Find reports related to fixed assets
+```
+
+---
+
 ### get_form_info
 
 Parses form XML and returns all datasources (with their fields and methods), the control
@@ -320,6 +354,8 @@ When the package name differs from the model name, pass `packageName` explicitly
 (e.g., `CustomExtensions`). In UDE environments, the server resolves it automatically
 from descriptor XML files. In traditional environments, it defaults to the model name.
 
+**Supported object types:** class, table, form, query, view, data-entity, enum, edt, **report**
+
 **Requires:** MCP server running on a local Windows machine with file system access.
 
 **Examples:**
@@ -327,6 +363,7 @@ from descriptor XML files. In traditional environments, it defaults to the model
 Create a class MyHelper and add it to my project
 Create a table extension for InventTable in my model
 Create a class in the CustomExtensions package, Contoso Utilities model
+Create the SSRS report XML for AslMyReport in my model
 ```
 
 ---
@@ -335,6 +372,9 @@ Create a class in the CustomExtensions package, Contoso Utilities model
 
 Returns the D365FO XML content as text. Works everywhere — Azure, local, any OS.
 Copilot then writes the content to a file using VS Code's file tools.
+
+Supports the same object types as `create_d365fo_file`: class, table, form, query, view,
+data-entity, enum, edt, **report**.
 
 Use this when the MCP server is hosted in Azure and does not have local file system access.
 

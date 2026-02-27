@@ -1,4 +1,4 @@
-/**
+﻿/**
  * D365FO XML Generator Tool
  * Generates D365FO XML content for classes, tables, enums, etc.
  * Returns XML as text - user/Copilot creates the physical file
@@ -11,7 +11,7 @@ import { getConfigManager } from '../utils/configManager.js';
 
 const GenerateD365XmlArgsSchema = z.object({
   objectType: z
-    .enum(['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'])
+    .enum(['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'])
     .describe('Type of D365FO object'),
   objectName: z
     .string()
@@ -248,6 +248,184 @@ ${titleField1Xml}${titleField2Xml}\t<DeleteActions />
   }
 
   /**
+   * Generate AxReport XML skeleton.
+   *
+   * properties:
+   *   dpClassName   - Data Provider class name          (default: <ReportName>DP)
+   *   tmpTableName  - TempDB table name                 (default: <ReportName>Tmp)
+   *   datasetName   - AxReportDataSet name              (default: tmpTableName)
+   *   designName    - AxReportDesign name               (default: 'Report')
+   *   caption       - Design caption label ref           (e.g. '@MyModel:MyLabel')
+   *   style         - Design style template             (e.g. 'TableStyleTemplate')
+   *   fields        - Array of { name, alias?, dataType?, caption? } → AxReportDataSetField
+   *   rdlContent    - Full RDL XML string to embed in <Text><![CDATA[...]]></Text>
+   */
+  static generateAxReportXml(
+    reportName: string,
+    properties?: Record<string, any>
+  ): string {
+    const tmpTableName = properties?.tmpTableName || `${reportName}Tmp`;
+    const dpClassName  = properties?.dpClassName  || `${reportName}DP`;
+    const datasetName  = properties?.datasetName  || tmpTableName;
+    const designName   = properties?.designName   || 'Report';
+
+    // --- Fields block ---
+    type FieldDef = { name: string; alias?: string; dataType?: string; caption?: string };
+    const fields = properties?.fields as FieldDef[] | undefined;
+    let fieldsXml: string;
+    if (fields && fields.length > 0) {
+      const entries = fields.map(f => {
+        const alias   = f.alias    || `${tmpTableName}.1.${f.name}`;
+        const capLine = f.caption  ? `\n\t\t\t\t<Caption>${f.caption}</Caption>`   : '';
+        const dtLine  = f.dataType ? `\n\t\t\t\t<DataType>${f.dataType}</DataType>` : '';
+        return [
+          `\t\t\t<AxReportDataSetField>`,
+          `\t\t\t\t<Name>${f.name}</Name>`,
+          `\t\t\t\t<Alias>${alias}</Alias>${capLine}${dtLine}`,
+          `\t\t\t\t<DisplayWidth>Auto</DisplayWidth>`,
+          `\t\t\t\t<UserDefined>false</UserDefined>`,
+          `\t\t\t</AxReportDataSetField>`,
+        ].join('\n');
+      });
+      fieldsXml = `\t\t\t<Fields>\n${entries.join('\n')}\n\t\t\t</Fields>`;
+    } else {
+      fieldsXml = `\t\t\t<Fields />`;
+    }
+
+    // --- Dataset parameters block (AX system params mapped to dataset query) ---
+    const datasetParamsXml = `\t\t\t<Parameters>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_PartitionKey</Name>
+\t\t\t\t\t<Alias>AX_PartitionKey</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_PartitionKey</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_CompanyName</Name>
+\t\t\t\t\t<Alias>AX_CompanyName</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_CompanyName</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_UserContext</Name>
+\t\t\t\t\t<Alias>AX_UserContext</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_UserContext</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_RenderingCulture</Name>
+\t\t\t\t\t<Alias>AX_RenderingCulture</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_RenderingCulture</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_ReportContext</Name>
+\t\t\t\t\t<Alias>AX_ReportContext</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_ReportContext</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t\t<AxReportDataSetParameter>
+\t\t\t\t\t<Name>AX_RdpPreProcessedId</Name>
+\t\t\t\t\t<Alias>AX_RdpPreProcessedId</Alias>
+\t\t\t\t\t<DataType>System.String</DataType>
+\t\t\t\t\t<Parameter>AX_RdpPreProcessedId</Parameter>
+\t\t\t\t</AxReportDataSetParameter>
+\t\t\t</Parameters>`;
+
+    // --- DefaultParameterGroup block (root-level — "Parameters" node in VS Designer) ---
+    const defaultParamGroupXml = `\t<DefaultParameterGroup>
+\t\t<Name xmlns="">Parameters</Name>
+\t\t<ReportParameterBases xmlns="">
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_PartitionKey</Name>
+\t\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t\t<Nullable>true</Nullable>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_CompanyName</Name>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_UserContext</Name>
+\t\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t\t<Nullable>true</Nullable>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_RenderingCulture</Name>
+\t\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t\t<Nullable>true</Nullable>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_ReportContext</Name>
+\t\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t\t<Nullable>true</Nullable>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t\t<AxReportParameterBase xmlns=""
+\t\t\t\t\ti:type="AxReportParameter">
+\t\t\t\t<Name>AX_RdpPreProcessedId</Name>
+\t\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t\t<Nullable>true</Nullable>
+\t\t\t\t<UserVisibility>Hidden</UserVisibility>
+\t\t\t\t<DefaultValue />
+\t\t\t\t<Values />
+\t\t\t</AxReportParameterBase>
+\t\t</ReportParameterBases>
+\t</DefaultParameterGroup>`;
+
+    // --- Design block ---
+    const captionLine = properties?.caption ? `\n\t\t\t<Caption>${properties.caption}</Caption>` : '';
+    const styleLine   = properties?.style   ? `\n\t\t\t<Style>${properties.style}</Style>`       : '';
+    const rdlContent  = properties?.rdlContent as string | undefined;
+    const textElement = rdlContent ? `\n\t\t\t<Text><![CDATA[${rdlContent}]]></Text>` : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxReport xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+\t<Name>${reportName}</Name>
+\t<DataMethods />
+\t<DataSets>
+\t\t<AxReportDataSet xmlns="">
+\t\t\t<Name>${datasetName}</Name>
+\t\t\t<DataSourceType>ReportDataProvider</DataSourceType>
+\t\t\t<Query>SELECT * FROM ${dpClassName}.${tmpTableName}</Query>
+\t\t\t<FieldGroups />
+${fieldsXml}
+${datasetParamsXml}
+\t\t</AxReportDataSet>
+\t</DataSets>
+${defaultParamGroupXml}
+\t<Designs>
+\t\t<AxReportDesign xmlns=""
+\t\t\t\ti:type="AxReportPrecisionDesign">
+\t\t\t<Name>${designName}</Name>${captionLine}
+\t\t\t<DataSet>${datasetName}</DataSet>${styleLine}
+\t\t\t<AutoDesignSpecs />${textElement}
+\t\t\t<DisableIndividualTransformation />
+\t\t</AxReportDesign>
+\t</Designs>
+\t<EmbeddedImages />
+</AxReport>`;
+  }
+
+  /**
    * Main generate method
    */
   static generate(
@@ -271,6 +449,8 @@ ${titleField1Xml}${titleField2Xml}\t<DeleteActions />
         return this.generateAxViewXml(objectName, properties);
       case 'data-entity':
         return this.generateAxDataEntityXml(objectName, properties);
+      case 'report':
+        return this.generateAxReportXml(objectName, properties);
       default:
         throw new Error(`Unsupported object type: ${objectType}`);
     }
@@ -312,6 +492,7 @@ export async function handleGenerateD365Xml(
       query: 'AxQuery',
       view: 'AxView',
       'data-entity': 'AxDataEntityView',
+      report: 'AxReport',
     };
 
     const objectFolder = objectFolderMap[args.objectType];

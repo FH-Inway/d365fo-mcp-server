@@ -29,6 +29,20 @@ This workspace contains D365FO code. **Always use the specialized MCP tools**  p
 > Label/HelpText → modify-property  propertyPath="Label" propertyValue="@MyModel:MyLabel"
 > ```
 >
+> **Field rename / bulk field rewrite — NEVER use PowerShell for these:**
+> ```
+> Rename one field   → rename-field        fieldName="OldName"  fieldNewName="NewName"
+>                      (also fixes index DataField refs and TitleField1/2 automatically)
+>                      repair-only mode: if field was already renamed (e.g. by replace-all-fields),
+>                      pass the OLD corrupted name → only index refs are fixed, Fields block untouched
+>
+> Rewrite ALL fields → replace-all-fields  fields=[{name,edt?,type?,mandatory?,label?}, ...]
+>                      (use when field names contain spaces or are otherwise corrupted)
+>
+> Overwrite whole    → create_d365fo_file  xmlContent="<full XML>"  overwrite=true
+> object XML           (creates .bak backup first; use when the entire XML needs replacing)
+> ```
+>
 > **Pattern:**
 > ```
 > 1. get_class_info("MyClass")                       analyze (compact=true by default)
@@ -57,7 +71,8 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 | Find best practice | `analyze_code_patterns`  `get_api_usage_patterns` |
 | Optimize query | `get_table_info`  `analyze_code_patterns` |
 | Where is X used? | `find_references(targetName)` |
-| How does X work? | `get_class_info` / `get_table_info` / `get_form_info` |
+| How does X work? | `get_class_info` / `get_table_info` / `get_form_info` / `get_report_info` |
+| Create SSRS report | See **SSRS Report Workflow** section below |
 
 ## Critical Rules
 
@@ -66,7 +81,7 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 |  Built-in |  MCP Tool |
 |-------------|------------|
 | `code_search`, `file_search`, `grep_search` | `search()`, `batch_search()` |
-| `get_file`, `read_file` on .xml/.xpp | `get_class_info()`, `get_table_info()`, `get_form_info()` |
+| `get_file`, `read_file` on .xml/.xpp | `get_class_info()`, `get_table_info()`, `get_form_info()`, `get_report_info()` |
 | `edit_file`, `apply_patch`, `replace_string_in_file` | `modify_d365fo_file()` |
 | `create_file` for D365FO objects | `create_d365fo_file()` |
 
@@ -83,6 +98,7 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 9. **NEVER** include model prefix in `name` param of `generate_smart_table`/`generate_smart_form`  prefix is applied automatically (causes double-prefix)
 10. **NEVER** use `get_enum_info()` for EDTs  use `get_edt_info()` instead
 11. **NEVER** infer the target model from search results or object names — the `model` field in search/get_table_info results is the SOURCE model of that existing object, NOT where you should create new objects. The target model for ALL create/modify operations is ALWAYS from `.mcp.json` (projectPath/modelName). Example of WRONG reasoning: task involves a report → search returns objects from "AslReports" → ❌ DO NOT use "AslReports". Use the configured model.
+12. **NEVER** create AxReport XML with `create_file` or PowerShell — ALWAYS use `create_d365fo_file(objectType="report", xmlContent=<full XML>, addToProject=true)`. SSRS reports require UTF-8 BOM and correct AOT path which only `create_d365fo_file` guarantees.
 
 ### generate_smart_table / generate_smart_form  TWO success cases
 
@@ -102,12 +118,42 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 - ❌ NEVER write XML files directly with `create_file` or PowerShell because you think the prefix logic is wrong
 - ❌ NEVER edit .rnrproj manually — `create_d365fo_file` with `addToProject=true` handles it
 
+### SSRS Report Workflow (report / sestava / výkaz)
+
+An SSRS report in D365FO consists of **5 objects** — create them in this order:
+
+```
+1. TmpTable     objectType="table"   TableType=TempDB   (holds report rows)
+2. Contract     objectType="class"   data contract with parms (dialog fields)
+3. DP class     objectType="class"   extends SrsReportDataProviderBase, fills TmpTable
+4. Controller   objectType="class"   extends SrsReportRunController (optional, for menu item)
+5. Report       objectType="report"  AxReport XML with DataSet + Design (RDL)
+```
+
+**Step-by-step for the AxReport file:**
+```
+a) Study existing similar report:    get_report_info("InventValue")   ← ALWAYS use this, NEVER PowerShell Get-Content
+b) Generate skeleton:                generate_d365fo_xml(objectType="report", objectName="MyReport",
+                                       properties={ dpClassName, tmpTableName, datasetName,
+                                                    caption, style, fields[], rdlContent })
+c) Save to disk:                     create_d365fo_file(objectType="report", objectName="MyReport",
+                                       xmlContent=<full XML>, addToProject=true)
+```
+
+**Key rules for reports:**
+- `DataSourceType` must be `ReportDataProvider`
+- `Query` field format: `SELECT * FROM {DPClassName}.{TmpTableName}`
+- RDL design goes inside `<Designs><AxReportDesign><Text>…</Text></AxReportDesign></Designs>`
+- ❌ NEVER use `create_file` for the .xml — it breaks AOT (wrong encoding, no project entry)
+- ❌ NEVER use PowerShell `Get-Content` to read report XML — use `get_report_info()` instead
+- ✅ Pass full assembled XML via `xmlContent` parameter of `create_d365fo_file`
+
 ## Available MCP Tools
 
 ### Search & Discovery
 | Tool | Use for |
 |------|---------|
-| `search(query, type?)` | Find any D365FO symbol (class, table, method, field, enum, edt, form, query) |
+| `search(query, type?)` | Find any D365FO symbol (class, table, method, field, enum, edt, form, query, **report**) |
 | `batch_search(queries[])` | Multiple searches in parallel |
 | `search_extensions(query)` | Custom/ISV code only |
 | `get_class_info(className, compact?, methodOffset?)` | Class signatures (`compact=true` default, 15/page). Set `compact=false` + `methodOffset` only to read bodies |
@@ -118,10 +164,11 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 
 ### Object Info
 | Tool | Use for |
-|------|---------|
+|------|----------|
 | `get_form_info(formName)` | Datasources, controls, methods |
 | `get_query_info(queryName)` | Datasources, joins, ranges |
 | `get_view_info(viewName)` | View / data entity structure |
+| `get_report_info(reportName)` | **Read AxReport structure** — datasets, fields, designs, RDL summary. Use INSTEAD of PowerShell Get-Content. Reports are indexed (type=`report`) — also searchable via `search()` |
 | `get_method_signature(className, methodName, includeCocTemplate?)` | **Preferred way to get a full method body** — required before CoC. Pass `includeCocTemplate: true` only when writing a CoC extension |
 | `find_references(targetName, targetType?)` | Where-used analysis |
 
@@ -146,9 +193,9 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 ### File Operations
 | Tool | Use for |
 |------|---------|
-| `generate_d365fo_xml(objectType, objectName)` | Preview XML before creating |
-| `create_d365fo_file(objectType, objectName, modelName, projectPath?, xmlContent?, addToProject?)` | Create new D365FO file |
-| `modify_d365fo_file(objectType, objectName, operation, ...)` | Edit existing (add-method, add-field, modify-property, remove-method, remove-field) |
+| `generate_d365fo_xml(objectType, objectName)` | Preview XML before creating (supports: class, table, enum, form, query, view, data-entity, **report**) |
+| `create_d365fo_file(objectType, objectName, modelName, projectPath?, xmlContent?, addToProject?, overwrite?)` | Create new D365FO file — or overwrite existing with `overwrite=true` + `xmlContent` (supports: class, table, enum, form, query, view, data-entity, **report**) |
+| `modify_d365fo_file(objectType, objectName, operation, ...)` | Edit existing (add-method, add-field, **modify-field**, **rename-field**, **replace-all-fields**, modify-property, remove-method, remove-field) |
 
 ### Labels
 | Tool | Use for |

@@ -16,7 +16,7 @@ import { PackageResolver } from '../utils/packageResolver.js';
 const ModifyD365FileArgsSchema = z.object({
   objectType: z.enum(['class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report', 'table-extension', 'class-extension', 'form-extension', 'enum-extension']).describe('Type of D365FO object'),
   objectName: z.string().describe('Name of the object to modify'),
-  operation: z.enum(['add-method', 'add-field', 'modify-field', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
+  operation: z.enum(['add-method', 'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
   
   // For add-method
   methodName: z.string().optional().describe('Name of method to add/remove'),
@@ -26,10 +26,22 @@ const ModifyD365FileArgsSchema = z.object({
   methodParameters: z.string().optional().describe('Method parameters (e.g., "str _param1, int _param2")'),
   
   // For add-field / modify-field (tables)
-  fieldName: z.string().optional().describe('Name of field to add/remove/modify'),
+  fieldName: z.string().optional().describe('Name of field to add/remove/modify/rename'),
+  fieldNewName: z.string().optional().describe('New name for the field (required for rename-field operation)'),
   fieldType: z.string().optional().describe('Extended data type or base type (for add-field: required; for modify-field: new EDT to set)'),
   fieldMandatory: z.boolean().optional().describe('Is field mandatory'),
   fieldLabel: z.string().optional().describe('Field label'),
+  fields: z.array(z.object({
+    name: z.string(),
+    edt: z.string().optional(),
+    type: z.string().optional(),
+    mandatory: z.boolean().optional(),
+    label: z.string().optional(),
+  })).optional().describe(
+    'Full list of fields for replace-all-fields operation. Each item: { name, edt?, type?, mandatory?, label? }. ' +
+    'Use this to completely rewrite the Fields block — e.g. when field names are corrupted/have spaces. ' +
+    'All existing fields are replaced atomically. Backup is created automatically.'
+  ),
   
   // For modify-property
   propertyPath: z.string().optional().describe(
@@ -123,6 +135,16 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       case 'modify-field':
         modified = await modifyField(xmlObj, objectType, args);
         message = `Modified field "${args.fieldName}" in ${objectType} "${objectName}"`;
+        break;
+      
+      case 'rename-field':
+        modified = await renameField(xmlObj, objectType, args);
+        message = `Renamed field "${args.fieldName}" → "${args.fieldNewName}" in ${objectType} "${objectName}"`;
+        break;
+
+      case 'replace-all-fields':
+        modified = await replaceAllFields(xmlObj, objectType, args);
+        message = `Replaced all fields in ${objectType} "${objectName}" (${(args as any).fields?.length ?? 0} fields written)`;
         break;
       
       case 'remove-field':
@@ -586,6 +608,195 @@ async function modifyField(xmlObj: any, objectType: string, args: any): Promise<
 
   if (fieldLabel !== undefined) {
     field.Label = [fieldLabel];
+  }
+
+  return true;
+}
+
+/**
+ * Rename an existing field on a table.
+ * Also updates any index field references that use the old name.
+ */
+async function renameField(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  const { fieldName, fieldNewName } = args;
+
+  if (!fieldName) throw new Error('fieldName is required for rename-field operation');
+  if (!fieldNewName) throw new Error('fieldNewName is required for rename-field operation');
+  if (objectType !== 'table') throw new Error('rename-field operation is only supported for tables');
+
+  const rootKey = getRootKey(objectType);
+  const root = xmlObj[rootKey];
+  if (!root) throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+
+  // --- Fix Fields block ---
+  // If the field still has the OLD name, rename it.
+  // If it already has the NEW name (was renamed by replace-all-fields), skip silently.
+  // If the table has no fields at all, that is also fine — we may only be fixing index refs.
+  const rawFields = root.Fields;
+  const fieldsEmpty =
+    !rawFields ||
+    rawFields === '' ||
+    (Array.isArray(rawFields) && (rawFields.length === 0 || rawFields[0] === '' || rawFields[0] == null));
+
+  if (!fieldsEmpty) {
+    const fieldsContainer = Array.isArray(root.Fields) ? root.Fields[0] : root.Fields;
+    if (!Array.isArray(fieldsContainer.AxTableField)) {
+      fieldsContainer.AxTableField = fieldsContainer.AxTableField ? [fieldsContainer.AxTableField] : [];
+    }
+
+    const field = fieldsContainer.AxTableField.find((f: any) =>
+      Array.isArray(f.Name) ? f.Name[0] === fieldName : f.Name === fieldName
+    );
+    if (field) {
+      // Field still has old name — rename it
+      field.Name = [fieldNewName];
+    }
+    // If not found: field was already renamed (e.g. via replace-all-fields) — continue to fix refs below
+  }
+
+  // --- Fix index DataField references ---
+  const fixIndexRefs = (container: any) => {
+    if (!container) return;
+    const items = Array.isArray(container) ? container : [container];
+    for (const item of items) {
+      if (Array.isArray(item.Fields?.[0]?.AxTableIndexField)) {
+        for (const idxField of item.Fields[0].AxTableIndexField) {
+          const cur = Array.isArray(idxField.DataField) ? idxField.DataField[0] : idxField.DataField;
+          if (cur === fieldName) {
+            idxField.DataField = [fieldNewName];
+          }
+        }
+      }
+    }
+  };
+  fixIndexRefs(root.Indexes?.[0]?.AxTableIndex);
+
+  // --- Fix FieldGroups DataField references ---
+  // Structure: FieldGroups[0].AxTableFieldGroup[].Fields[0].AxTableFieldGroupField[].DataField
+  const fixFieldGroupRefs = (oldName: string, newName: string, fgContainer: any) => {
+    if (!fgContainer) return;
+    const groups = Array.isArray(fgContainer) ? fgContainer : [fgContainer];
+    for (const group of groups) {
+      const fgFields = group.Fields?.[0]?.AxTableFieldGroupField;
+      if (!Array.isArray(fgFields)) continue;
+      for (const fgField of fgFields) {
+        const cur = Array.isArray(fgField.DataField) ? fgField.DataField[0] : fgField.DataField;
+        if (cur === oldName) {
+          fgField.DataField = [newName];
+        }
+      }
+    }
+  };
+  fixFieldGroupRefs(fieldName, fieldNewName, root.FieldGroups?.[0]?.AxTableFieldGroup);
+
+  // --- Fix TitleField1/TitleField2 ---
+  const tf1 = Array.isArray(root.TitleField1) ? root.TitleField1[0] : root.TitleField1;
+  if (tf1 === fieldName) root.TitleField1 = [fieldNewName];
+  const tf2 = Array.isArray(root.TitleField2) ? root.TitleField2[0] : root.TitleField2;
+  if (tf2 === fieldName) root.TitleField2 = [fieldNewName];
+
+  return true;
+}
+
+/**
+ * Atomically replace ALL fields in a table with a new field list.
+ * Use when field names are corrupted (contain spaces, wrong EDTs, etc.).
+ * Backup is always created before the operation.
+ */
+async function replaceAllFields(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  const { fields } = args as { fields?: Array<{ name: string; edt?: string; type?: string; mandatory?: boolean; label?: string }> };
+
+  if (!fields || fields.length === 0) {
+    throw new Error('fields array is required and must not be empty for replace-all-fields operation');
+  }
+  if (objectType !== 'table') throw new Error('replace-all-fields operation is only supported for tables');
+
+  const rootKey = getRootKey(objectType);
+  const root = xmlObj[rootKey];
+  if (!root) throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+
+  // Build old→new name map from existing Fields block before overwriting
+  // so we can repair index DataField references afterwards.
+  const oldToNew = new Map<string, string>();
+  const rawFieldsBefore = root.Fields;
+  const hasOldFields =
+    rawFieldsBefore &&
+    rawFieldsBefore !== '' &&
+    Array.isArray(rawFieldsBefore) &&
+    rawFieldsBefore.length > 0 &&
+    rawFieldsBefore[0] !== '' &&
+    rawFieldsBefore[0] != null;
+
+  if (hasOldFields) {
+    const oldContainer = Array.isArray(rawFieldsBefore) ? rawFieldsBefore[0] : rawFieldsBefore;
+    const oldAxFields = Array.isArray(oldContainer.AxTableField)
+      ? oldContainer.AxTableField
+      : oldContainer.AxTableField ? [oldContainer.AxTableField] : [];
+
+    // Match old fields to new fields by position (best-effort for corrupted names)
+    for (let i = 0; i < Math.min(oldAxFields.length, fields.length); i++) {
+      const oldName = Array.isArray(oldAxFields[i].Name) ? oldAxFields[i].Name[0] : oldAxFields[i].Name;
+      const newName = fields[i].name;
+      if (oldName && oldName !== newName) {
+        oldToNew.set(oldName, newName);
+      }
+    }
+  }
+
+  // Build new AxTableField array
+  const newAxTableFields = fields.map(f => {
+    const iType = f.edt ? getFieldNodeName(f.edt) : getFieldNodeName(f.type || 'String');
+    const node: any = {
+      '$': { xmlns: '', 'i:type': iType },
+      Name: [f.name],
+    };
+    if (f.edt)      node.ExtendedDataType = [f.edt];
+    if (f.mandatory) node.Mandatory = ['Yes'];
+    if (f.label)     node.Label = [f.label];
+    return node;
+  });
+
+  root.Fields = [{ AxTableField: newAxTableFields }];
+
+  // Repair index DataField references using the old→new name map
+  if (oldToNew.size > 0) {
+    const indexes = root.Indexes?.[0]?.AxTableIndex;
+    if (indexes) {
+      const idxList = Array.isArray(indexes) ? indexes : [indexes];
+      for (const idx of idxList) {
+        if (Array.isArray(idx.Fields?.[0]?.AxTableIndexField)) {
+          for (const idxField of idx.Fields[0].AxTableIndexField) {
+            const cur = Array.isArray(idxField.DataField) ? idxField.DataField[0] : idxField.DataField;
+            const mapped = oldToNew.get(cur);
+            if (mapped) {
+              idxField.DataField = [mapped];
+            }
+          }
+        }
+      }
+    }
+    // Repair TitleField1/TitleField2
+    const tf1 = Array.isArray(root.TitleField1) ? root.TitleField1[0] : root.TitleField1;
+    if (tf1 && oldToNew.has(tf1)) root.TitleField1 = [oldToNew.get(tf1)];
+    const tf2 = Array.isArray(root.TitleField2) ? root.TitleField2[0] : root.TitleField2;
+    if (tf2 && oldToNew.has(tf2)) root.TitleField2 = [oldToNew.get(tf2)];
+
+    // Repair FieldGroups DataField references
+    const fgGroups = root.FieldGroups?.[0]?.AxTableFieldGroup;
+    if (fgGroups) {
+      const groups = Array.isArray(fgGroups) ? fgGroups : [fgGroups];
+      for (const group of groups) {
+        const fgFields = group.Fields?.[0]?.AxTableFieldGroupField;
+        if (!Array.isArray(fgFields)) continue;
+        for (const fgField of fgFields) {
+          const cur = Array.isArray(fgField.DataField) ? fgField.DataField[0] : fgField.DataField;
+          const mapped = cur ? oldToNew.get(cur) : undefined;
+          if (mapped) {
+            fgField.DataField = [mapped];
+          }
+        }
+      }
+    }
   }
 
   return true;

@@ -871,6 +871,9 @@ export class XppSymbolIndex {
         const edtsPath = path.join(modelPath, 'edts');
         if (fs.existsSync(edtsPath)) this.indexEdts(edtsPath, model);
 
+        const reportsPath = path.join(modelPath, 'reports');
+        if (fs.existsSync(reportsPath)) this.indexReports(reportsPath, model);
+
         // Mark model as done atomically with its data (same transaction)
         markProgress?.run(model, Date.now());
       });
@@ -921,7 +924,7 @@ export class XppSymbolIndex {
    * so the most data is committed to disk before any CI pipeline timeout.
    */
   private sortModelsBySize(metadataPath: string, models: string[]): string[] {
-    const subdirs = ['classes', 'tables', 'forms', 'queries', 'views', 'enums', 'edts'];
+    const subdirs = ['classes', 'tables', 'forms', 'queries', 'views', 'enums', 'edts', 'reports'];
     const sized = models.map(model => {
       let count = 0;
       const modelPath = path.join(metadataPath, model);
@@ -1203,6 +1206,31 @@ export class XppSymbolIndex {
         }
       } catch (error) {
         console.error(`      ⚠️  Skipped edt ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexReports(reportsPath: string, model: string): void {
+    const files = fs.readdirSync(reportsPath).filter(f => f.endsWith('.json'));
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(reportsPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const reportData = JSON.parse(content);
+
+        // sourcePath points to the live AxReport XML on disk (set by extractReports)
+        const sourceFilePath = reportData.sourcePath || filePath;
+        const reportName = reportData.name || path.basename(file, '.json');
+
+        this.addSymbol({
+          name: reportName,
+          type: 'report',
+          filePath: sourceFilePath,
+          model,
+        });
+      } catch (error) {
+        console.error(`      ⚠️  Skipped report ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

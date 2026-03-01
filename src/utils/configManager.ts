@@ -321,6 +321,23 @@ class ConfigManager {
       return normalizePath(this.autoDetectedProject.packagePath);
     }
 
+    // Last resort (Windows only): probe well-known PackagesLocalDirectory locations.
+    // Covers the two standard D365FO installation scenarios without requiring .mcp.json config:
+    //   C:\AosService\PackagesLocalDirectory  → VHD / local developer machine
+    //   K:\AosService\PackagesLocalDirectory  → cloud-hosted VM (standard Azure Dev/Test image)
+    if (process.platform === 'win32') {
+      const wellKnownCandidates = [
+        'C:\\AosService\\PackagesLocalDirectory',
+        'K:\\AosService\\PackagesLocalDirectory',
+      ];
+      for (const candidate of wellKnownCandidates) {
+        if (existsSync(candidate)) {
+          console.error(`[ConfigManager] ✅ Auto-probed packagePath: ${candidate}`);
+          return candidate;
+        }
+      }
+    }
+
     return null;
   }
 

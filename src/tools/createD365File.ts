@@ -1970,7 +1970,7 @@ export async function handleCreateD365File(
         'Provide it in one of these ways:\n' +
         '  1. Pass modelName explicitly in the tool call arguments\n' +
         '  2. Add modelName to .mcp.json context: { "context": { "modelName": "YourModel" } }\n' +
-        '  3. Add workspacePath ending with the package/model name: { "context": { "workspacePath": "K:\\\\...\\\\YourModel" } }\n' +
+        '  3. Add workspacePath ending with the package/model name: { "context": { "workspacePath": "C:\\\\AosService\\\\PackagesLocalDirectory\\\\YourModel" } }\n' +
         '  4. Add projectPath or solutionPath to .mcp.json so the model is auto-extracted from .rnrproj';
       console.error(`[create_d365fo_file] ${errorMsg}`);
       return { content: [{ type: 'text', text: errorMsg }] };
@@ -2018,9 +2018,9 @@ export async function handleCreateD365File(
           `  {\n` +
           `    "servers": {\n` +
           `      "context": {\n` +
-          `        "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourProject\\\\YourProject.rnrproj",\n` +
-          `        "solutionPath": "K:\\\\VSProjects\\\\YourSolution",\n` +
-          `        "packagePath": "K:\\\\AosService\\\\PackagesLocalDirectory"\n` +
+          `        "projectPath": "C:\\\\VSProjects\\\\YourSolution\\\\YourProject\\\\YourProject.rnrproj",\n` +
+          `        "solutionPath": "C:\\\\VSProjects\\\\YourSolution",\n` +
+          `        "packagePath": "C:\\\\AosService\\\\PackagesLocalDirectory"\n` +
           `      }\n` +
           `    }\n` +
           `  }\n\n` +
@@ -2141,7 +2141,7 @@ export async function handleCreateD365File(
         `Running on: ${process.platform}\n\n` +
         `The create_d365fo_file tool requires:\n` +
         `1. Running on Windows (local D365FO VM)\n` +
-        `2. Direct access to K:\\AosService\\PackagesLocalDirectory\n\n` +
+        `2. Direct access to PackagesLocalDirectory (e.g. C:\\AosService\\PackagesLocalDirectory)\n\n` +
         `This tool CANNOT work through Azure MCP proxy (runs on Linux).\n\n` +
         `Solutions:\n` +
         `- Run MCP server locally on D365FO Windows VM\n` +

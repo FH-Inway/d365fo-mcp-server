@@ -23,6 +23,7 @@ interface GenerateSmartTableArgs {
   modelName?: string;
   projectPath?: string;
   solutionPath?: string;
+  packagePath?: string;
   /**
    * Standard method names to generate and embed in the XML.
    * Supported: "find", "exist"
@@ -95,6 +96,12 @@ export const generateSmartTableTool: Tool = {
         type: 'string',
         description: 'Path to solution directory (alternative to projectPath)',
       },
+      packagePath: {
+        type: 'string',
+        description:
+          'Base packages directory path (e.g. "C:\\AosService\\PackagesLocalDirectory"). ' +
+          'Auto-detected from .mcp.json; only needed when the default K: fallback is wrong.',
+      },
       methods: {
         type: 'array',
         items: { type: 'string' },
@@ -125,6 +132,7 @@ export async function handleGenerateSmartTable(
     modelName,
     projectPath,
     solutionPath,
+    packagePath: argPackagePath,
     methods: requestedMethods,
   } = args;
 
@@ -325,7 +333,22 @@ export async function handleGenerateSmartTable(
 
   // Determine package path
   const configManager = getConfigManager();
-  const packagePath = configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+  const resolvedPackagePath = argPackagePath || configManager.getPackagePath();
+  // getPackagePath() already probes C:\ and K:\ well-known locations before returning null,
+  // so reaching here with null means neither location exists on this machine.
+  if (!resolvedPackagePath && process.platform === 'win32') {
+    throw new Error(
+      '\u274c Cannot determine PackagesLocalDirectory path.\n\n' +
+      'Neither C:\\AosService\\PackagesLocalDirectory nor K:\\AosService\\PackagesLocalDirectory were found.\n\n' +
+      'If your D365FO installation is on a different drive, add one of the following to your .mcp.json:\n' +
+      '  \u2022 "packagePath": "<drive>:\\\\AosService\\\\PackagesLocalDirectory"\n' +
+      '  \u2022 "workspacePath": "<drive>:\\\\AosService\\\\PackagesLocalDirectory\\\\YourModel"\n' +
+      '  \u2022 "projectPath": "<drive>:\\\\VSProjects\\\\YourSolution\\\\YourProject\\\\YourProject.rnrproj"\n\n' +
+      'Or pass packagePath directly to this tool call.\n\n' +
+      'UDE environments: packagePath is not used — configure customPackagesPath/microsoftPackagesPath instead.'
+    );
+  }
+  const packagePath = resolvedPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
 
   // Resolve project/solution path — fall back to configManager (from .mcp.json / auto-detection)
   let resolvedProjectPath = projectPath;

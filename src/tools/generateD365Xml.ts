@@ -126,6 +126,7 @@ class XmlTemplateGenerator {
 
     return { declaration, methods };
   }
+
   /**
    * Generate AxClass XML structure
    */

@@ -111,7 +111,21 @@ export async function verifyD365ProjectTool(
     const configPackagePath = configManager.getPackagePath();
     const envType = await configManager.getDevEnvironmentType();
     const configModelName = configManager.getModelName();
-    const actualModelName = args.modelName || configModelName || 'UnknownModel';
+
+    // Derive model name — priority:
+    //   1) Explicit args.modelName
+    //   2) .mcp.json / env var (configModelName)
+    //   3) Stem of the .rnrproj filename  (structure: <base>\<pkg>\<model>\<model>.rnrproj)
+    let actualModelName: string =
+      args.modelName ||
+      configModelName ||
+      (args.projectPath ? path.basename(args.projectPath, path.extname(args.projectPath)) : '') ||
+      'UnknownModel';
+    const modelDetectedFrom =
+      args.modelName          ? 'argument'    :
+      configModelName         ? 'mcp.json'    :
+      args.projectPath        ? 'projectPath' :
+                                'none';
 
     let basePath: string;
     let resolvedPackageName: string;
@@ -251,7 +265,13 @@ export async function verifyD365ProjectTool(
 
     const lines = [
       `## Verification Results — ${actualModelName}`,
-      `> Model: \`${actualModelName}\`  Package: \`${resolvedPackageName}\`  Base: \`${basePath}\``,
+      `> Model: \`${actualModelName}\`  (detected from: ${modelDetectedFrom})  Package: \`${resolvedPackageName}\`  Base: \`${basePath}\``,
+      ...(modelDetectedFrom === 'none' ? [
+        '',
+        '> ⚠️ **Model name could not be auto-detected.** Paths below are likely wrong.',
+        '> Pass `modelName` explicitly, or configure it in `.mcp.json` under `servers.context.modelName`,',
+        '> or provide `projectPath` pointing to your `.rnrproj` file so the model name can be derived.',
+      ] : []),
       '',
       header,
       separator,

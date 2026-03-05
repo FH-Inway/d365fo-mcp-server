@@ -262,6 +262,147 @@ public void run()
     const xml = XmlTemplateGenerator.generateAxClassXml('MyBatch', undefined, { extends: 'RunBaseBatch' });
     expect(xml).toContain('<Extends>RunBaseBatch</Extends>');
   });
+
+  // ── Inner-class method extraction (AI-style source with methods INSIDE {}) ──
+
+  it('should extract methods defined INSIDE the class body into separate <Method> elements', () => {
+    // AI often generates this style (methods inside the class braces)
+    const source = `public class MyHelper
+{
+    int counter;
+
+    public void first()
+    {
+        // a
+    }
+
+    public void second()
+    {
+        // b
+    }
+}`;
+    const xml = XmlTemplateGenerator.generateAxClassXml('MyHelper', source);
+
+    // Methods must be in <Methods> block, not buried in <Declaration>
+    expect(xml).not.toContain('<Methods />');
+    expect(xml).toContain('<Name>first</Name>');
+    expect(xml).toContain('<Name>second</Name>');
+
+    // The member variable must be in <Declaration>
+    const declStart = xml.indexOf('<Declaration><![CDATA[');
+    const declEnd = xml.indexOf(']]></Declaration>');
+    const declContent = xml.substring(declStart, declEnd);
+    expect(declContent).toContain('int counter;');
+
+    // method bodies must NOT appear in <Declaration>
+    expect(declContent).not.toContain('public void first()');
+    expect(declContent).not.toContain('public void second()');
+  });
+
+  it('should separate inner-class methods with a single blank line', () => {
+    const source = `public class MyDP extends SrsReportDataProviderBase
+{
+    MyTmp tmpTable;
+
+    public void processReport()
+    {
+        // process
+    }
+
+    protected void postProcessReport()
+    {
+        super();
+    }
+
+    public MyTmp getTmpTable()
+    {
+        return tmpTable;
+    }
+}`;
+    const xml = XmlTemplateGenerator.generateAxClassXml('MyDP', source);
+
+    // Between </Method> and the next <Method> there must be exactly one blank line
+    const between = xml.match(/<\/Method>\n(\n?)\t\t\t<Method>/g);
+    expect(between).toBeTruthy();
+    for (const gap of between!) {
+      expect(gap).toBe('</Method>\n\n\t\t\t<Method>');
+    }
+  });
+
+  it('extractInnerClassMethods should return null for a class with only member variables', () => {
+    const decl = `public class MyContract\n{\n    TransDate transDate;\n    str name;\n}`;
+    const result = XmlTemplateGenerator.extractInnerClassMethods(decl);
+    expect(result).toBeNull();
+  });
+
+  it('extractInnerClassMethods should handle attributed methods correctly', () => {
+    const source = `[DataContractAttribute]
+public class MyContract
+{
+    TransDate transDate;
+
+    [DataMemberAttribute]
+    public TransDate parmTransDate(TransDate _v = transDate)
+    {
+        transDate = _v;
+        return transDate;
+    }
+}`;
+    const xml = XmlTemplateGenerator.generateAxClassXml('MyContract', source);
+
+    expect(xml).toContain('<Name>parmTransDate</Name>');
+    expect(xml).not.toContain('<Methods />');
+
+    // The method source must include the attribute annotation
+    expect(xml).toContain('[DataMemberAttribute]');
+  });
+
+  it('extractInnerClassMethods should preserve /// doc comments as part of the method source', () => {
+    const source = `public class AslInventByZoneDP extends SrsReportDataProviderBase
+{
+    AslInventByZoneTmp  tmpTable;
+
+    /// <summary>
+    /// Returns the populated temporary table used as the report dataset.
+    /// </summary>
+    [SRSReportDataSetAttribute(tableStr(AslInventByZoneTmp))]
+    public AslInventByZoneTmp getAslInventByZoneTmp()
+    {
+        select tmpTable;
+        return tmpTable;
+    }
+
+    /// <summary>
+    /// Main processing method.
+    /// </summary>
+    public void processReport()
+    {
+        // do work
+    }
+}`;
+    const xml = XmlTemplateGenerator.generateAxClassXml('AslInventByZoneDP', source);
+
+    // Both methods extracted — not in <Declaration>
+    expect(xml).not.toContain('<Methods />');
+    expect(xml).toContain('<Name>getAslInventByZoneTmp</Name>');
+    expect(xml).toContain('<Name>processReport</Name>');
+
+    // Doc comments must survive in each method's <Source>
+    expect(xml).toContain('/// <summary>');
+    expect(xml).toContain('/// Returns the populated temporary table');
+    expect(xml).toContain('/// Main processing method.');
+
+    // Attribute annotation must survive
+    expect(xml).toContain('[SRSReportDataSetAttribute(tableStr(AslInventByZoneTmp))]');
+
+    // Member variable stays in <Declaration>, not duplicated into methods
+    const declStart = xml.indexOf('<Declaration><![CDATA[');
+    const declEnd   = xml.indexOf(']]></Declaration>');
+    const decl = xml.substring(declStart, declEnd);
+    expect(decl).toContain('AslInventByZoneTmp  tmpTable;');
+    expect(decl).not.toContain('public AslInventByZoneTmp getAslInventByZoneTmp');
+    expect(decl).not.toContain('public void processReport');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,5 +441,76 @@ describe('XmlTemplateGenerator.encodeReportTextElement()', () => {
     const input = '<AxReport><Name>R</Name><Text>already encoded</Text></AxReport>';
     const result = XmlTemplateGenerator.encodeReportTextElement(input);
     expect(result).toBe(input);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generateAxMenuItemXml — ObjectType correctness
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('XmlTemplateGenerator.generateAxMenuItemXml()', () => {
+
+  it('menu-item-action should include <ObjectType>Class</ObjectType>', () => {
+    const xml = XmlTemplateGenerator.generateAxMenuItemXml('menu-item-action', 'MyAction', { targetObject: 'MyController' });
+    expect(xml).toContain('<ObjectType>Class</ObjectType>');
+    expect(xml).toContain('<Object>MyController</Object>');
+    expect(xml).toContain('AxMenuItemAction');
+  });
+
+  it('menu-item-display should NOT include <ObjectType> when targeting a form', () => {
+    const xml = XmlTemplateGenerator.generateAxMenuItemXml('menu-item-display', 'MyDisplay', { targetObject: 'MyForm' });
+    // ObjectType=Form is not a valid D365FO enum value and must be omitted
+    expect(xml).not.toContain('<ObjectType>');
+    expect(xml).toContain('<Object>MyForm</Object>');
+    expect(xml).toContain('AxMenuItemDisplay');
+  });
+
+  it('menu-item-display with explicit objectType=Class should include <ObjectType>Class</ObjectType>', () => {
+    const xml = XmlTemplateGenerator.generateAxMenuItemXml('menu-item-display', 'MyDisplay', { targetObject: 'MyController', objectType: 'Class' });
+    expect(xml).toContain('<ObjectType>Class</ObjectType>');
+  });
+
+  it('menu-item-output should include <ObjectType>Class</ObjectType> by default', () => {
+    const xml = XmlTemplateGenerator.generateAxMenuItemXml('menu-item-output', 'MyOutput', { targetObject: 'MyReportController' });
+    expect(xml).toContain('<ObjectType>Class</ObjectType>');
+    expect(xml).not.toContain('<ObjectType>Report</ObjectType>');
+    expect(xml).toContain('AxMenuItemOutput');
+  });
+
+  it('menu-item-output with explicit Report should map to SSRSReport', () => {
+    const xml = XmlTemplateGenerator.generateAxMenuItemXml('menu-item-output', 'MyOutput', { targetObject: 'MyReport', objectType: 'Report' });
+    expect(xml).toContain('<ObjectType>SSRSReport</ObjectType>');
+    expect(xml).not.toContain('<ObjectType>Report</ObjectType>');
+  });
+
+  it('sanitizeMenuItemXml should fix ObjectType=Form → remove element', () => {
+    const xml = `<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+\t<Name>Test</Name>
+\t<Label>@Test</Label>
+\t<Object>TestForm</Object>
+\t<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>`;
+    const sanitized = XmlTemplateGenerator.sanitizeMenuItemXml(xml);
+    expect(sanitized).not.toContain('<ObjectType>');
+  });
+
+  it('sanitizeMenuItemXml should fix ObjectType=Report → SSRSReport', () => {
+    const xml = `<AxMenuItemOutput xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+\t<Name>Test</Name>
+\t<Label>@Test</Label>
+\t<Object>TestReport</Object>
+\t<ObjectType>Report</ObjectType>
+</AxMenuItemOutput>`;
+    const sanitized = XmlTemplateGenerator.sanitizeMenuItemXml(xml);
+    expect(sanitized).toContain('<ObjectType>SSRSReport</ObjectType>');
+    expect(sanitized).not.toContain('<ObjectType>Report</ObjectType>');
+  });
+
+  it('sanitizeMenuItemXml should add xmlns:i if missing', () => {
+    const xml = `<AxMenuItemAction xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+\t<Name>Test</Name>
+</AxMenuItemAction>`;
+    const sanitized = XmlTemplateGenerator.sanitizeMenuItemXml(xml);
+    expect(sanitized).toContain('xmlns:i="http://www.w3.org/2001/XMLSchema-instance"');
   });
 });

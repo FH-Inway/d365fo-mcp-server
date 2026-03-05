@@ -92,6 +92,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | `get_file`, `read_file` on .xml/.xpp | `get_class_info()`, `get_table_info()`, `get_form_info()`, `get_report_info()` |
 | `edit_file`, `apply_patch`, `replace_string_in_file` | `modify_d365fo_file()` |
 | `create_file` for D365FO objects | `create_d365fo_file()` |
+| PowerShell `ls`, `Test-Path`, `Get-Item` to check D365FO files | `verify_d365fo_project()` |
 
 ### Non-Negotiable Rules
 
@@ -322,6 +323,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `generate_d365fo_xml(objectType, objectName)` | Preview XML before creating (supports: class, table, enum, form, query, view, data-entity, report) |
 | `create_d365fo_file(objectType, objectName, modelName, projectPath?, xmlContent?, addToProject?, overwrite?)` | Create new D365FO file — or overwrite existing with `overwrite=true` + `xmlContent` |
 | `modify_d365fo_file(objectType, objectName, operation, ...)` | Edit existing (add-method, add-field, **modify-field**, **rename-field**, **replace-all-fields**, modify-property, remove-method, remove-field) |
+| `verify_d365fo_project(objects, projectPath?, modelName?)` | Verify objects exist on disk and in .rnrproj — use INSTEAD OF PowerShell after `create_d365fo_file` |
 
 ### Labels
 | Tool | Use for |

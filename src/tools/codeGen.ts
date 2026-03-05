@@ -414,15 +414,24 @@ function menuItemXmlTemplate(name: string, itemType: string, targetObject: strin
   const elemName = itemType === 'action' ? 'AxMenuItemAction'
     : itemType === 'output' ? 'AxMenuItemOutput'
     : 'AxMenuItemDisplay';
-  const objType = itemType === 'action' ? 'Class'
-    : itemType === 'output' ? 'Report'
-    : 'Form';
+  // ObjectType rules (from real D365FO XML files):
+  //   action  → always "Class"
+  //   output  → "Class" (default for controller pattern) or "SSRSReport"; never "Report"
+  //   display → OMIT when targeting a Form (implicit default); use "Class" for analytics/class targets
+  let objectTypeXml: string;
+  if (itemType === 'action') {
+    objectTypeXml = '\n\t<ObjectType>Class</ObjectType>';
+  } else if (itemType === 'output') {
+    objectTypeXml = '\n\t<ObjectType>Class</ObjectType>';
+  } else {
+    // display — omit ObjectType (targets a form by default)
+    objectTypeXml = '';
+  }
   return `<?xml version="1.0" encoding="utf-8"?>
 <${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
 \t<Label>@TODO:LabelId</Label>
-\t<Object>${targetObject}</Object>
-\t<ObjectType>${objType}</ObjectType>
+\t<Object>${targetObject}</Object>${objectTypeXml}
 </${elemName}>`;
 }
 

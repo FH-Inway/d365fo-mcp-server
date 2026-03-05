@@ -515,6 +515,17 @@ Copilot calls `validate_object_naming`, checks D365FO naming conventions
 (e.g. `{Base}{Prefix}_Extension` for class extensions, `{Base}.{Prefix}Extension` for AOT
 extensions), detects conflicts against the 584K+ symbol index, and suggests the correct name.
 
+### Verify that created objects are in place
+
+```
+Verify that all objects I just created exist on disk and are in the project file
+Check MyTable, MyClass, MyForm are correctly placed in the WHSModel project
+```
+
+Copilot calls `verify_d365fo_project`, checks that each object has its XML file on disk
+and a `<Content Include>` entry in the `.rnrproj` project file. Returns a markdown table
+with ✅/❌ per object plus a summary — no PowerShell needed.
+
 ### Create a SysOperation batch job
 
 ```

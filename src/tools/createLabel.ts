@@ -138,12 +138,15 @@ function buildAxLabelFileXml(
   packageName: string,
   model: string,
 ): string {
+  // D365FO requires <Language> for every locale except en-US (which is the implicit default).
+  const languageElement = language !== 'en-US' ? `\t<Language>${language}</Language>\n` : '';
   return (
     `<?xml version="1.0" encoding="utf-8"?>\n` +
     `<AxLabelFile xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n` +
     `\t<Name>${labelFileId}_${language}</Name>\n` +
     `\t<LabelContentFileName>${labelFileId}.${language}.label.txt</LabelContentFileName>\n` +
     `\t<LabelFileId>${labelFileId}</LabelFileId>\n` +
+    languageElement +
     `\t<RelativeUriInModelStore>${packageName}\\${model}\\AxLabelFile\\LabelResources\\${language}\\${labelFileId}.${language}.label.txt</RelativeUriInModelStore>\n` +
     `</AxLabelFile>\n`
   );

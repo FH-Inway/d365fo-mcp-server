@@ -11,7 +11,7 @@ import { Parser, Builder } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
-import { ensureXppDocComment } from '../utils/xppDocGen.js';
+import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 
 const CreateD365FileArgsSchema = z.object({
@@ -256,7 +256,7 @@ export class XmlTemplateGenerator {
       if (varLines.length > 0) {
         // Inject the rescued declarations into the class body, just before the closing '}'
         const injected = varLines.map(l => '    ' + l.trim()).join('\n');
-        declaration = declaration.replace(/}(\s*)$/, `\n${injected}\n}`);
+        declaration = declaration.replace(/}(\s*)$/, `\n${injected}\n\n}`);
         console.error(
           `[splitXppClassSource] Rescued ${varLines.length} member variable declaration(s) ` +
           'found outside the class {} block — injected into <Declaration>.'
@@ -438,7 +438,7 @@ export class XmlTemplateGenerator {
     // Rebuild the declaration as: class header + member variable declarations only
     const classHeader = classDeclaration.substring(0, classOpenIdx + 1);
     const memberVarsXpp = memberVarLines.length > 0
-      ? '\n' + memberVarLines.map(v => '    ' + v).join('\n') + '\n'
+      ? '\n' + memberVarLines.map(v => '    ' + v).join('\n') + '\n\n'
       : '\n';
 
     return {
@@ -495,7 +495,7 @@ export class XmlTemplateGenerator {
 \t<Name>${className}</Name>
 ${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}\t<SourceCode>
 \t\t<Declaration><![CDATA[
-${ensureXppDocComment(declaration)}
+${ensureBlankLineBeforeClosingBrace(ensureXppDocComment(declaration))}
 ]]></Declaration>
 ${methodsXml}\t</SourceCode>
 </AxClass>
@@ -620,7 +620,7 @@ ${fieldsXml}\t<FullTextIndexes />
   ): string {
     const label = properties?.label || enumName;
     const useEnumValue = properties?.useEnumValue ? 'Yes' : 'No';
-    const isExtensible = properties?.isExtensible ? 'Yes' : 'No';
+
 
     // Build <EnumValues> block from properties.enumValues array
     // Each entry: { name: string; value?: number; label?: string; helpText?: string }
@@ -634,25 +634,28 @@ ${fieldsXml}\t<FullTextIndexes />
       enumValuesXml = '\t<EnumValues>\n';
       let autoValue = 0;
       for (const v of enumValueSpecs) {
-        const intValue = v.value ?? autoValue++;
+        const intValue = v.value ?? autoValue;
+        autoValue = intValue + 1;
         enumValuesXml += `\t\t<AxEnumValue>\n`;
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
-        enumValuesXml += `\t\t\t<EnumValue>${intValue}</EnumValue>\n`;
         if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
         if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
+        // D365FO convention: omit <Value> for 0 (implicit default)
+        if (intValue !== 0) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
-        if (v.value === undefined) {} else { autoValue = intValue + 1; }
       }
       enumValuesXml += '\t</EnumValues>\n';
     }
+
+    // IsExtensible goes after EnumValues; value is lowercase true/false
+    const isExtensibleXml = properties?.isExtensible ? '\t<IsExtensible>true</IsExtensible>\n' : '';
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${enumName}</Name>
 \t<Label>${label}</Label>
 \t<UseEnumValue>${useEnumValue}</UseEnumValue>
-\t<IsExtensible>${isExtensible}</IsExtensible>
-${enumValuesXml}</AxEnum>
+${enumValuesXml}${isExtensibleXml}</AxEnum>
 `;
   }
 
@@ -2187,9 +2190,17 @@ ${defaultParamGroupXml}
    * Supports properties.fields: Array<{ name, edt?, label?, mandatory? }>
    */
   static generateAxTableExtensionXml(name: string, properties?: Record<string, any>): string {
-    // Build <Fields> block — extension fields use <AxTableExtensionField> (no i:type needed)
-    const fieldSpecs: Array<{ name: string; edt?: string; label?: string; mandatory?: boolean }> =
-      Array.isArray(properties?.fields) ? properties.fields : [];
+    // Build <Fields> block — extension fields use <AxTableField xmlns="" i:type="...">
+    // Field spec: { name, edt?, enumType?, label?, mandatory?, fieldType? }
+    // fieldType overrides auto-detection; enumType implies AxTableFieldEnum
+    const fieldSpecs: Array<{
+      name: string;
+      edt?: string;
+      enumType?: string;
+      label?: string;
+      mandatory?: boolean;
+      fieldType?: string;
+    }> = Array.isArray(properties?.fields) ? properties.fields : [];
 
     let fieldsXml: string;
     if (fieldSpecs.length === 0) {
@@ -2197,12 +2208,15 @@ ${defaultParamGroupXml}
     } else {
       fieldsXml = '\t<Fields>\n';
       for (const f of fieldSpecs) {
-        fieldsXml += `\t\t<AxTableExtensionField>\n`;
+        // Determine i:type: explicit fieldType wins; enum implied by enumType; default String
+        const iType = f.fieldType ?? (f.enumType ? 'AxTableFieldEnum' : 'AxTableFieldString');
+        fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
-        if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
-        if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
-        fieldsXml += `\t\t</AxTableExtensionField>\n`;
+        if (f.edt)        fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
+        if (f.label)      fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.mandatory)  fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
+        if (f.enumType)   fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
+        fieldsXml += `\t\t</AxTableField>\n`;
       }
       fieldsXml += '\t</Fields>';
     }
@@ -2675,7 +2689,7 @@ export class ProjectFileManager {
  */
 export async function handleCreateD365File(
   request: CallToolRequest
-): Promise<{ content: Array<{ type: string; text: string }> }> {
+): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const args = CreateD365FileArgsSchema.parse(request.params.arguments);
 
   try {
@@ -2840,6 +2854,34 @@ export async function handleCreateD365File(
       `[create_d365fo_file] Final ModelName to use: ${actualModelName}${wasAutoExtracted ? ' (auto-extracted ✓)' : ' (as-is, NOT auto-extracted ⚠️)'}`
     );
 
+    // Guard: refuse to create objects in generic placeholder model names.
+    // These are never real D365FO models — if the AI reaches this point with a placeholder,
+    // the workspace was not detected correctly and the file would land in the wrong location.
+    const PLACEHOLDER_MODELS = new Set([
+      'mymodel', 'mypackage', 'model', 'package', 'modelname', 'packagename',
+      'yourmodel', 'yourpackage', 'custommodel', 'custompackage',
+      'testmodel', 'testpackage', 'samplemodel', 'samplepackage',
+    ]);
+    if (actualModelName && PLACEHOLDER_MODELS.has(actualModelName.toLowerCase())) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `❌ Model name "${actualModelName}" looks like a placeholder — file creation aborted.\n\n` +
+              `The workspace / project path was not detected correctly, so the model name\n` +
+              `could not be resolved from the .rnrproj file.\n\n` +
+              `To fix this, provide one of:\n` +
+              `  • projectPath — full path to the .rnrproj file (e.g. K:\\...\\MyProject.rnrproj)\n` +
+              `  • solutionPath — directory containing the .rnrproj\n` +
+              `  • A correct modelName that matches an actual D365FO model on disk\n\n` +
+              `Never use "MyModel", "MyPackage" or similar placeholders as modelName.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
     // Apply extension prefix to object name
     const objectPrefix = resolveObjectPrefix(actualModelName);
 
@@ -2869,8 +2911,8 @@ export async function handleCreateD365File(
     }
 
     // Case B: extension classes (objectName ends with "_Extension")
-    // e.g. "SalesFormLetterFmMcp_Extension" with modelName="FmMcp" → "SalesFormLetter_Extension"
-    // applyObjectPrefix then produces "SalesFormLetterAsl_Extension"
+    // e.g. "SalesFormLetterContoso_Extension" with modelName="ContosoExt" → "SalesFormLetter_Extension"
+    // applyObjectPrefix then produces "SalesFormLetterContoso_Extension"
     if (
       args.objectName.endsWith('_Extension') &&
       actualModelName &&

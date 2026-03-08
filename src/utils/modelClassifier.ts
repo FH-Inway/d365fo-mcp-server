@@ -122,7 +122,7 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
   // Example: SalesFormLetter + Contoso → SalesFormLetterContoso_Extension
   //
   // IMPORTANT: objectName MUST be the BASE class name + "_Extension" WITHOUT any prefix infix.
-  // E.g. "SalesFormLetter_Extension", NOT "SalesFormLetterFmMcp_Extension".
+  // E.g. "SalesFormLetter_Extension", NOT "SalesFormLetterContoso_Extension".
   // Callers (e.g. createD365File) are responsible for stripping any stale model-name infix
   // before calling this function when EXTENSION_PREFIX differs from modelName.
   if (objectName.endsWith('_Extension')) {

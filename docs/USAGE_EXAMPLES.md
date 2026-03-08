@@ -64,19 +64,24 @@ and Service classes, and create all three files in my project.
 ```
 
 **Tools Copilot chains:**
-1. `analyze_code_patterns` — finds existing SysOperation batch jobs in the codebase and extracts the common structure (DataContract, Controller, Service pattern)
-2. `get_method_signature` + `batch_search` — retrieves signatures of `SysOperationServiceController`, `SysOperationDataContractBase`, and `BatchHeader` in parallel
-3. `search_labels` + `get_label_info` — checks whether labels for dialog captions (e.g. "Vendor", "Payment terms") already exist in the model's label file
-4. `get_class_info` — reads the full class definition of a representative existing batch job to confirm the exact method signatures and attribute usage
-5. `generate_code` with `pattern: sysoperation` — produces all three classes (DataContract, Controller, Service) following the discovered patterns
-6. `create_label` — creates any missing labels for the DataContract parameter captions in all supported languages
-7. `get_edt_info` — looks up the correct base EDT for each DataContract parameter (e.g. `VendAccount`, `PaymTermId`) to ensure proper validation and lookup behaviour
-8. `create_d365fo_file` × 3 — writes the DataContract, Controller, and Service XML files and registers each in the project
-9. `verify_d365fo_project` — confirms all three objects are on disk and correctly included in the `.rnrproj`
+1. `get_workspace_info` — workspace config check (model name, prefix, paths); mandatory first call
+2. `analyze_code_patterns` ×2 + `search_extensions` ×2 + `search` — parallel research: SysOperation DataContract/Controller/Service patterns in the codebase; existing batch extensions in custom models; broader VendPaymTerms and related class candidates
+3. `batch_search` (7 parallel queries) — resolves `SysOperationServiceController`, `SysOperationServiceBase`, `VendTable`, `PaymTerm`, `PaymTermId`, `VendAccount`, `DimensionStructureSynchronization` in one round-trip
+4. `get_class_info` + `get_api_usage_patterns` + `analyze_code_patterns` — deep-dive into `SysOperationServiceController` API; typical DataContract/Controller/Service wiring sequence; parm method and attribute conventions
+5. `generate_code` with `pattern: sysoperation` — generates DataContract/Controller/Service skeleton for `VendPaymTermsRecalculate` following the discovered patterns
+6. `get_table_info` + `batch_search` (4 parallel) + `get_edt_info` ×2 — `VendTable` field overview; resolves `VendPaymTermId`, `VendAccount`, `Blocked`, `NoYesId` EDTs; confirms base types and lookup constraints for each DataContract parm
+7. `search_extensions` ×4 + `get_class_info` + `get_method_signature` + `suggest_method_implementation` — finds existing My* DataContract class as a structural template; reads an exact `parm` method body; gets a `processOperation` implementation suggestion derived from the codebase
+8. `get_class_info` + `get_table_info` + `batch_search` (2 parallel) — `SysOperationServiceBase` method overview (base calls to replicate); `PaymTerm` table structure; resolves `VendGroup` and `PaymTermId` EDTs for remaining parms
+9. `search_labels` ×10 — exhaustive search across model label file, SYS global labels, and all scopes using 10 different phrasings to ensure no reusable label is missed before creating new ones
+10. `create_label` ×2 — creates `VendPaymTermRecalcParmVendGroup` and `VendPaymTermRecalcParmNewPaymTerm` in en-US, cs, and de
+11. `create_d365fo_file` ×3 — DataContract, Controller, and Service classes; each registered in the `.rnrproj`
+12. `verify_d365fo_project` — confirms all three objects are on disk and in the project  ✅
 
-**Why this matters:** Fetching EDT types before generating ensures each DataContract
-parameter has the correct base type, so the dialog renders the right lookup and
-the compiler validates assignments — not just a plain `str` or `int`.
+**Why this matters:**
+- The two `batch_search` rounds (steps 3 and 8) reflect a real discovery dependency: the first round identifies the framework classes to study; the second fills in the gaps that only became apparent after reading the `generate_code` skeleton and the `VendTable` structure.
+- `search_extensions` ×4 (step 7) is the most efficient way to find an existing My* DataContract as a structural template — a real class from the same model gives exact attribute placement and parm boilerplate that no documentation can match.
+- 10 `search_labels` queries (step 9) before two `create_label` calls reflects real label hygiene: D365FO has thousands of SYS labels that overlap with custom domains, and a single search rarely covers all phrasings. Running all variants up front is cheaper than discovering a duplicate after writing code that references a new label ID.
+- `generate_code` (step 5) produces a compilable skeleton but not a finished service — EDT types, base class calls, and `processOperation` logic all require the subsequent research in steps 6–8 before the files can be written.
 
 ---
 

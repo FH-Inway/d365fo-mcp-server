@@ -175,17 +175,21 @@ for inventory revaluation. I've never worked with ledger journals before.
 ```
 
 **Tools Copilot chains:**
-1. `get_table_info` × 2 — reads `LedgerJournalTable` and `LedgerJournalTrans` fields, relations, and methods in parallel
-2. `search` — finds all usages of `LedgerJournalCheckPost` in the codebase
-3. `get_class_info` — reads the class methods and signatures for `LedgerJournalCheckPost`
-4. `search` — finds existing ledger journal creation code in `MyPackage`
-5. `get_table_info` — reads `InventTable` to find the dimension attribute field
-6. `batch_search` — fetches `DimensionAttributeValueSet`, `DimensionDefaultingEngine`, and `LedgerDimensionFacade` in parallel to understand dimension defaulting APIs
-7. `generate_code` — produces the service class with header creation, line creation, dimension defaulting, and posting
-8. `create_d365fo_file` — writes the class and registers it in the project
-9. `verify_d365fo_project` — confirms the file is on disk and in the project
+1. `get_workspace_info` — workspace config check, model and prefix detection
+2. `get_table_info` ×3 — `LedgerJournalTable`, `LedgerJournalTrans`, `InventTable` (fields, relations; `InventTable` specifically for `DefaultDimension` field)
+3. `get_api_usage_patterns` ×3 — typical call sequences for `LedgerJournalCheckPost`, `LedgerJournalEngine`, `DimensionAttributeValueSetStorage`; `DimensionDefaultingService` returned no results
+4. `analyze_code_patterns` ×2 — journal creation patterns in the codebase; dimension defaulting patterns from `InventTable.DefaultDimension` to `LedgerJournalTrans`
+5. `get_class_info` ×3 — full method overview for `LedgerJournalCheckPost`, `JournalTableData`, `JournalTransData`
+6. `get_method_signature` ×6 — exact signatures for: `LedgerJournalCheckPost.newLedgerJournalTable`, `.parmJournalNum`, `.processOperation`; `LedgerDimensionFacade.serviceCreateLedgerDimension`, `.createLedgerDimension`; `JournalTransData.create`; `JournalTableData.construct`; `AslBankSett_LedgerJournalTransAutoSettleService.run` (as a pattern reference)
+7. `get_class_info("LedgerDimensionFacade")` — dimension facade methods for merging ledger dimensions
+8. `search_extensions` ×4 — existing custom journal extensions and `Asl*` service class patterns; `AslBankSett_LedgerJournalTransAutoSettleService` found and studied as a structural template
+9. `search_labels` ×4 + `get_label_info` — label lookup for journal/adjustment/error strings; confirmed 4 existing labels in the model and available languages (en-US, cs, de)
+10. `batch_search` ×1 (3 parallel) — `JournalTableData`, `JournalTransData`, `InventItemSalesSetup DefaultDimension`
+11. `create_label` ×3 — `AslInventAdjItemNotFound`, `AslInventAdjMainAccountMissing`, `AslInventAdjPostFailed`
+12. `create_d365fo_file` — creates `AslLedgerInventAdjustmentService` class and registers it in the project
+13. `verify_d365fo_project` — confirms the file exists on disk and in `.rnrproj`  ✅
 
-**Why this matters:** Fetching `DimensionAttributeValueSet`, `DimensionDefaultingEngine`,
-and `LedgerDimensionFacade` in one batch call gives Copilot the full dimension API picture
-before generating code — otherwise it guesses at method signatures and produces code that
-does not compile.
+**Why this matters:**
+- `get_method_signature` is called 7× (steps 6–7) because Copilot must know the exact parameter order for `JournalTransData.create(doInsert, initVoucherList)` and `LedgerDimensionFacade.createLedgerDimension` before writing a single line of service code — guessing these produces uncompilable X++.
+- Studying an existing `Asl*` service class (`AslBankSett_LedgerJournalTransAutoSettleService`) via `get_class_info` + `get_method_signature` gives a proven structural template in the same model, avoiding the need to invent a pattern from scratch.
+- `search_labels` before `create_label` ensures no duplicate label IDs are created — the 4 found labels guided the naming of the 3 new ones.

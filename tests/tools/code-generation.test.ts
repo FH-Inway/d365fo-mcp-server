@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { codeGenTool } from '../../src/tools/codeGen';
 import { completionTool } from '../../src/tools/completion';
 import { handleGenerateD365Xml } from '../../src/tools/generateD365Xml';
+import { XmlTemplateGenerator } from '../../src/tools/createD365File';
 import { handleGenerateSmartTable } from '../../src/tools/generateSmartTable';
 import { handleGenerateSmartForm } from '../../src/tools/generateSmartForm';
 import { handleSuggestEdt } from '../../src/tools/suggestEdt';
@@ -205,6 +206,45 @@ describe('generate_d365fo_xml', () => {
       req('generate_d365fo_xml', { objectName: 'Foo', modelName: 'MyModel' }),
     );
     expect(result.isError).toBe(true);
+  });
+});
+
+// ─── XmlTemplateGenerator.splitXppClassSource ────────────────────────────────
+
+describe('XmlTemplateGenerator.splitXppClassSource', () => {
+  it('adds a blank line before } when member vars have no trailing blank line', () => {
+    const source = [
+      '[DataContractAttribute]',
+      'public final class AslVendPaymTermRecalcContract',
+      '{',
+      '    VendGroupId vendGroupId;',
+      '}',
+    ].join('\n');
+    const { declaration, methods } = XmlTemplateGenerator.splitXppClassSource(source);
+    expect(methods).toHaveLength(0);
+    // Must end with a blank line before the closing brace
+    expect(declaration).toMatch(/VendGroupId vendGroupId;\n\n}$/);
+  });
+
+  it('does not double-add the blank line when one is already present', () => {
+    const source = [
+      'public class MyContract',
+      '{',
+      '    str myField;',
+      '',
+      '}',
+    ].join('\n');
+    const { declaration } = XmlTemplateGenerator.splitXppClassSource(source);
+    // Should still be exactly \n\n} — not \n\n\n}
+    expect(declaration).toMatch(/myField;\n\n}$/);
+    expect(declaration).not.toMatch(/myField;\n\n\n}/);
+  });
+
+  it('does not add a blank line for an empty class body', () => {
+    const source = 'public class MyEmpty\n{\n}';
+    const { declaration } = XmlTemplateGenerator.splitXppClassSource(source);
+    // Empty body: no extra blank line injected
+    expect(declaration).toMatch(/{\n}$/);
   });
 });
 

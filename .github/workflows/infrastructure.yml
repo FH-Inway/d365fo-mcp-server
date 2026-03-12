@@ -34,6 +34,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy Bicep to Azure
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       id-token: write   # required for OIDC login
       contents: read

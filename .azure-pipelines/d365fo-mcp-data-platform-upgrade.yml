@@ -1,7 +1,7 @@
 # Azure Pipeline for D365 Platform Upgrade
-# This pipeline combines standard and custom metadata extraction in single stage
-# Use this after Microsoft releases new D365 version
-# Pipeline automatically downloads latest version from NuGet (10.0.* and 7.0.*)
+# Use this after Microsoft releases a new D365 version.
+# Downloads PackagesLocalDirectory.zip from Blob Storage, rebuilds the full metadata
+# database (standard + custom + labels), and uploads the result to Azure Blob Storage.
 
 trigger: none  # Manual execution only
 
@@ -24,6 +24,8 @@ variables:
     value: './metadata'
   - name: DB_PATH
     value: './database/xpp-metadata.db'
+  - name: LABELS_DB_PATH
+    value: './database/xpp-metadata-labels.db'
   - name: PACKAGES_DIR_NAME
     value: 'PackagesLocalDirectory'
   - name: PACKAGES_ZIP_PATH
@@ -40,20 +42,18 @@ stages:
   - stage: PlatformUpgrade
     displayName: 'Complete Platform Upgrade'
     jobs:
-      # ──────────────────────────────────────────────────────────────────────────
-      # Job 1 – Download, extract both standard+custom, build symbol rows only
-      # ──────────────────────────────────────────────────────────────────────────
-      - job: BuildSymbols
-        displayName: 'Phase 1: Download → Extract → Build Symbols'
+      - job: BuildAndUpload
+        displayName: 'Download → Extract → Build → Upload'
         timeoutInMinutes: 120
         steps:
           # ========== Step 1: Checkout MCP Server code from GitHub ==========
+
           - checkout: mcpServer
             displayName: 'Checkout MCP Server code from GitHub'
             path: mcp-server
-        
+
           # ========== Step 2: Install Node.js and Dependencies ==========
-          
+
           - task: NodeTool@0
             displayName: 'Install Node.js'
             inputs:
@@ -64,7 +64,7 @@ stages:
             workingDirectory: '$(MCP_SERVER_PATH)'
 
           # ========== Step 3: Download PackagesLocalDirectory.zip from Azure Blob ==========
-          
+
           - script: |
               echo "Downloading $(PACKAGES_DIR_NAME).zip from Azure Blob Storage..."
               az storage blob download \
@@ -73,7 +73,7 @@ stages:
                 --name $(PACKAGES_DIR_NAME).zip \
                 --file $(PACKAGES_ZIP_PATH) \
                 --output table
-              
+
               echo "Download completed successfully"
               ls -lh $(PACKAGES_ZIP_PATH)
             displayName: 'Download $(PACKAGES_DIR_NAME).zip from Azure Blob'
@@ -81,18 +81,18 @@ stages:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
 
           # ========== Step 4: Extract PackagesLocalDirectory.zip ==========
-          
+
           - script: |
               echo "Extracting $(PACKAGES_DIR_NAME).zip..."
               unzip -q $(PACKAGES_ZIP_PATH) -d $(Pipeline.Workspace)
-              
+
               echo "Extraction completed successfully"
               echo "Contents of extracted directory:"
               ls -la $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
             displayName: 'Extract $(PACKAGES_DIR_NAME).zip'
 
           # ========== Step 5: Extract Standard Metadata ==========
-          
+
           - script: npm run extract-metadata
             displayName: 'Extract standard metadata from packages'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -102,7 +102,7 @@ stages:
               EXTRACT_MODE: 'standard'
 
           # ========== Step 6: Upload Standard Metadata to Blob Storage ==========
-          
+
           - script: npm run blob-manager upload-standard
             displayName: 'Upload standard metadata to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -112,7 +112,7 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
 
           # ========== Step 7: Download Custom Metadata from Azure Blob ==========
-          
+
           - script: npm run blob-manager download-custom
             displayName: 'Download custom metadata from Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -121,65 +121,30 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # ========== Step 8: Phase 1 – Build symbols, skip FTS ==========
-          # SKIP_FTS=true defers the expensive FTS rebuild to Job 2.
-          # Models are sorted largest-first so most data is committed early.
+          # ========== Step 8: Build Database (symbols + labels, skip FTS) ==========
+          # SKIP_FTS=true defers the expensive FTS index rebuild to Step 9,
+          # keeping memory usage within limits on the hosted agent.
 
           - script: npm run build-database
-            displayName: 'Build symbols database (Phase 1 – SKIP_FTS=true)'
+            displayName: 'Build database – symbols + labels (SKIP_FTS=true)'
             workingDirectory: '$(MCP_SERVER_PATH)'
             timeoutInMinutes: 110
             env:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
+              LABELS_DB_PATH: $(LABELS_DB_PATH)
+              PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
               SKIP_FTS: 'true'
-              INCLUDE_LABELS: 'false'
+              INCLUDE_LABELS: 'true'
+              LABEL_LANGUAGES: $(LABEL_LANGUAGES)
               COMPUTE_STATS: 'false'
-              ENABLE_SEARCH_SUGGESTIONS: 'false'
+              ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
               NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
 
-          # ========== Pass partial DB to Job 2 ==========
-
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish partial database artifact'
-            inputs:
-              targetPath: '$(MCP_SERVER_PATH)/database/xpp-metadata.db'
-              artifact: 'xpp-metadata-db'
-              publishLocation: 'pipeline'
-
-      # ──────────────────────────────────────────────────────────────────────────
-      # Job 2 – Rebuild FTS index, finalize, upload  (Phase 2)
-      # ──────────────────────────────────────────────────────────────────────────
-      - job: BuildFTS
-        displayName: 'Phase 2: Rebuild FTS Index → Upload → Restart'
-        dependsOn: BuildSymbols
-        timeoutInMinutes: 120
-        steps:
-          - checkout: mcpServer
-            displayName: 'Checkout MCP Server code from GitHub'
-            path: mcp-server
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: $(nodeVersion)
-
-          - script: npm ci
-            displayName: 'Install NPM dependencies'
-            workingDirectory: '$(MCP_SERVER_PATH)'
-
-          # ========== Download partial DB from Job 1 ==========
-
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download partial database artifact'
-            inputs:
-              artifact: 'xpp-metadata-db'
-              targetPath: '$(MCP_SERVER_PATH)/database'
-
-          # ========== Phase 2: FTS rebuild + WAL conversion ==========
+          # ========== Step 9: Rebuild FTS Index ==========
 
           - script: npm run build-fts
-            displayName: 'Rebuild FTS index + finalize database (Phase 2)'
+            displayName: 'Rebuild FTS index + finalize database'
             workingDirectory: '$(MCP_SERVER_PATH)'
             timeoutInMinutes: 110
             env:
@@ -187,17 +152,25 @@ stages:
               INCLUDE_LABELS: 'false'
               NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
 
-          # ========== Upload Database to Blob Storage ==========
+          # ========== Step 10: Upload Databases to Blob Storage ==========
 
           - script: npm run blob-manager upload-database
-            displayName: 'Upload compiled database to Azure Blob'
+            displayName: 'Upload symbols database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # ========== Restart App Service ==========
+          - script: npm run blob-manager upload-database
+            displayName: 'Upload labels database to Azure Blob'
+            workingDirectory: '$(MCP_SERVER_PATH)'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(LABELS_DB_PATH)
+
+          # ========== Step 11: Restart App Service ==========
 
           - task: AzureAppServiceManage@0
             displayName: 'Restart App Service'
@@ -206,17 +179,21 @@ stages:
               action: 'Restart Azure App Service'
               webAppName: '$(AZURE_APP_SERVICE_NAME)'
 
+          # ========== Step 12: Log Completion ==========
+
           - script: |
               echo ""
               echo "============================================"
               echo "D365 Platform Upgrade Completed!"
               echo "============================================"
               echo ""
-              echo "✅ Standard metadata extracted and uploaded (Phase 1)"
-              echo "✅ Custom metadata downloaded (Phase 1)"
-              echo "✅ Symbols indexed (Phase 1)"
-              echo "✅ FTS index rebuilt (Phase 2)"
-              echo "✅ Database uploaded to Azure Blob"
+              echo "✅ PackagesLocalDirectory.zip downloaded"
+              echo "✅ Standard metadata extracted"
+              echo "✅ Standard metadata uploaded to blob"
+              echo "✅ Custom metadata downloaded from blob"
+              echo "✅ Database built (symbols + labels)"
+              echo "✅ FTS index rebuilt"
+              echo "✅ Databases uploaded to Azure Blob (symbols + labels)"
               echo "✅ App Service restarted"
               echo ""
               echo "Your MCP server is now running with the latest D365 version"

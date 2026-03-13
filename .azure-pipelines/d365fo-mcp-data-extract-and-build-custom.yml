@@ -238,7 +238,10 @@ stages:
               LABELS_DB_PATH: $(LABELS_DB_PATH)
               PACKAGES_PATH: $(PACKAGES_PATH)
               EXTRACT_MODE: '${{ parameters.extractionMode }}'
-              INCLUDE_LABELS: ${{ lower(string(not(parameters.skipExtraction))) }}
+              ${{ if parameters.skipExtraction }}:
+                INCLUDE_LABELS: 'false'
+              ${{ else }}:
+                INCLUDE_LABELS: 'true'
               LABEL_LANGUAGES: $(LABEL_LANGUAGES)
               COMPUTE_STATS: 'true'
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage

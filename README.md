@@ -170,7 +170,7 @@ The database downloads from Azure Blob Storage automatically on startup.
 
 Setup guide: [docs/SETUP.md](docs/SETUP.md) · CI/CD pipeline: [docs/PIPELINES.md](docs/PIPELINES.md)
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FFH-Inway%2Fd365fo-mcp-server%2Frefs%2Fheads%azure-deploy-button%2Finfrastructure%2Fazuredeploy.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FFH-Inway%2Fd365fo-mcp-server%2Frefs%2Fheads%2Fazure-deploy-button%2Finfrastructure%2Fazuredeploy.json)
 
 ---
 

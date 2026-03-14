@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 
 *Built for D365FO developers who write X++ in Visual Studio — not for generic web dev*
 
@@ -37,10 +37,10 @@ This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git
 cd d365fo-mcp-server
 npm install
-copy .env.example .env          # Set PACKAGES_PATH and CUSTOM_MODELS
+copy .env.example .env           # Set PACKAGES_PATH, CUSTOM_MODELS, DB_PATH, LABEL_LANGUAGES, ...
 npm run extract-metadata         # Extract XML from D365FO packages (~10–60 min)
 npm run build-database           # Build SQLite index (~5–20 min)
-npm run dev                      # Server at http://localhost:3000
+npm run dev                      # Server at http://localhost:8080
 ```
 
 > **UDE / Power Platform Tools?** Run `npm run select-config` instead of setting `PACKAGES_PATH` manually.
@@ -53,7 +53,7 @@ npm run dev                      # Server at http://localhost:3000
 
 **2.** In Visual Studio: **Tools → Options → GitHub → Copilot** → check *Enable MCP server integration in agent mode*
 
-**3.** Add `.mcp.json` to the root of your Visual Studio solution (next to the `.sln` file):
+**3.** Create `%USERPROFILE%\.mcp.json` (covers all solutions on the machine, recommended) or place `.mcp.json` next to a specific `.sln` file:
 
 ```json
 {

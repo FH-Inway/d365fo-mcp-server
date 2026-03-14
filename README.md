@@ -20,17 +20,7 @@ GitHub Copilot is great at C#, Python, and JavaScript. It struggles with X++ bec
 
 This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols — and makes it available to Copilot as 43 specialized tools. Copilot stops guessing and starts generating code that compiles on the first try.
 
-```
-┌─────────────────────────┐   MCP / HTTP    ┌────────────────────────────────────┐
-│  GitHub Copilot         │ ◄────────────►  │  D365 F&O MCP Server               │
-│  (Agent Mode)           │                 │                                    │
-│                         │                 │  ┌──────────────┐  ┌────────────┐  │
-│  "Create a CoC for      │                 │  │ 584K+ symbols│  │ 19M labels │  │
-│   SalesTable.insert()"  │                 │  │ SQLite FTS5  │  │ 70 langs   │  │
-│                         │                 │  │ < 50ms resp. │  │            │  │
-│  ← compiles first try   │                 │  └──────────────┘  └────────────┘  │ 
-└─────────────────────────┘                 └────────────────────────────────────┘
-```
+![Solution Architecture](docs/img/solution-architecture-diagram.png)
 
 | Without this server | With this server |
 |---------------------|-----------------|
@@ -68,11 +58,19 @@ npm run dev                      # Server at http://localhost:3000
 ```json
 {
   "servers": {
-    "d365fo-mcp-tools": {
-      "url": "http://localhost:3000/mcp/"
+    "d365fo-azure": {
+      "url": "https://your-server.azurewebsites.net/mcp/"
+    },
+    "d365fo-local": {
+      "command": "node",
+      "args": ["K:\\d365fo-mcp-server\\dist\\index.js"],
+      "env": {
+        "MCP_SERVER_MODE": "write-only",
+        "D365FO_SOLUTIONS_PATH": "K:\\VSProjects\\MySolution"
+      }
     },
     "context": {
-      "workspacePath": "K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel"
+      "workspacePath": "K:\\AosService\\PackagesLocalDirectory\\YourPackageName\\YourModelName"
     }
   }
 }
@@ -158,6 +156,8 @@ Copy-Item -Path ".github" -Destination "C:\source\repos\" -Recurse
 ## Azure Deployment
 
 Host on Azure App Service so the whole team shares one instance — nobody needs the server running locally.
+
+![Deployment Modes](docs/img/solution-architecture-diagram-deployment-modes.png)
 
 | Resource | Configuration | Monthly cost |
 |----------|---------------|-------------|
